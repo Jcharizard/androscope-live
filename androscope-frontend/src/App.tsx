@@ -27,6 +27,7 @@ import { DependencyMap } from './DependencyMap';
 import { AvdManager } from './AvdManager';
 import { ReverseEngineering } from './ReverseEngineering';
 import MemoryAnalyzer from './MemoryAnalyzer';
+import { Debugger } from './Debugger';
 
 // --- THEME AND STYLES ---
 const drawerWidth = 240;
@@ -163,6 +164,7 @@ function App() {
   const menuItems = [
     { text: 'AVD Manager', icon: <PhoneAndroidIcon /> },
     { text: 'Reverse Engineering', icon: <BugReportIcon /> },
+    { text: 'Advanced Debugger', icon: <AdbIcon /> },
     { text: 'Memory Analyzer', icon: <MemoryIcon /> },
     { text: 'Dashboard', icon: <DashboardIcon /> },
     { text: 'Logcat Viewer', icon: <BarChartIcon /> },
@@ -204,6 +206,7 @@ function App() {
           
           {activeView === 'AVD Manager' && <AvdManager />}
           {activeView === 'Reverse Engineering' && <ReverseEngineering />}
+          {activeView === 'Advanced Debugger' && <Debugger />}
           {activeView === 'Memory Analyzer' && <MemoryAnalyzer />}
           {activeView === 'Dashboard' && <Dashboard cpuData={cpuData} processes={processes} networkEvents={networkEvents} />}
           {activeView === 'Logcat Viewer' && <LogcatViewer logs={logcat} />}

@@ -60,6 +60,43 @@ function TabPanel(props: TabPanelProps) {
     );
 }
 
+interface ApkAnalysisResult {
+    package_name: string;
+    version_name: string;
+    version_code: string;
+    min_sdk: string;
+    target_sdk: string;
+    permissions: string[];
+    activities: string[];
+    services: string[];
+    receivers: string[];
+    providers: string[];
+    exported_components: string[];
+    dangerous_permissions: string[];
+    security_issues: string[];
+}
+
+interface ApkStringsResult {
+    total_strings: number;
+    urls: string[];
+    ip_addresses: string[];
+    api_keys: string[];
+    crypto_keys: string[];
+    hardcoded_secrets: string[];
+    interesting_strings: string[];
+}
+
+interface ImportedApk {
+    id: string;
+    name: string;
+    package_name: string;
+    file_path: string;
+    size: number;
+    auto_install: boolean;
+    imported_at: string;
+    last_installed?: string;
+}
+
 export const ReverseEngineering = () => {
     const [tabValue, setTabValue] = useState(0);
     const [networkStats, setNetworkStats] = useState<string[]>([]);
@@ -69,6 +106,11 @@ export const ReverseEngineering = () => {
     const [loading, setLoading] = useState(false);
     const [isLiveMode, setIsLiveMode] = useState(true);
     const [eventCount, setEventCount] = useState(0);
+    const [importedApks, setImportedApks] = useState<ImportedApk[]>([]);
+    const [selectedApkId, setSelectedApkId] = useState<string>('');
+    const [analysisResult, setAnalysisResult] = useState<ApkAnalysisResult | null>(null);
+    const [stringsResult, setStringsResult] = useState<ApkStringsResult | null>(null);
+    const [analysisLoading, setAnalysisLoading] = useState(false);
 
     const refreshNetworkData = async () => {
         try {
@@ -121,8 +163,45 @@ export const ReverseEngineering = () => {
         setIsLiveMode(!isLiveMode);
     };
 
+    const loadImportedApks = async () => {
+        try {
+            const apks = await invoke<ImportedApk[]>('get_imported_apks');
+            setImportedApks(apks);
+            if (apks.length > 0 && !selectedApkId) {
+                setSelectedApkId(apks[0].id);
+            }
+        } catch (error) {
+            console.error('Failed to load imported APKs:', error);
+        }
+    };
+
+    const analyzeSelectedApk = async () => {
+        if (!selectedApkId) {
+            alert('Please select an APK to analyze');
+            return;
+        }
+
+        setAnalysisLoading(true);
+        try {
+            const result = await invoke<ApkAnalysisResult>('analyze_apk_static', { apkId: selectedApkId });
+            setAnalysisResult(result);
+            
+            // Also extract strings
+            const strings = await invoke<ApkStringsResult>('extract_apk_strings', { apkId: selectedApkId });
+            setStringsResult(strings);
+            
+            alert(`🎯 APK Analysis Complete!\n\n📦 Package: ${result.package_name}\n📱 Version: ${result.version_name}\n🔐 Permissions: ${result.permissions.length}\n⚠️ Dangerous Permissions: ${result.dangerous_permissions.length}\n🚨 Security Issues: ${result.security_issues.length}\n🔤 Strings Found: ${strings.total_strings}\n🌐 URLs: ${strings.urls.length}\n🔑 API Keys: ${strings.api_keys.length}`);
+        } catch (error) {
+            console.error('Failed to analyze APK:', error);
+            alert('Failed to analyze APK: ' + error);
+        } finally {
+            setAnalysisLoading(false);
+        }
+    };
+
     useEffect(() => {
         refreshAllData();
+        loadImportedApks();
         
         // Set up timeline event listener
         const unlistenTimeline = listen('timeline_event', (event: Event<TimelineEvent>) => {
@@ -546,6 +625,30 @@ export const ReverseEngineering = () => {
                         Use only on applications you own or have explicit permission to test.
                     </Alert>
 
+                    {/* APK Selection */}
+                    <Box sx={{ mb: 3 }}>
+                        <Typography variant="subtitle1" gutterBottom>
+                            📦 Select APK to Analyze:
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                            {importedApks.map((apk) => (
+                                <Chip
+                                    key={apk.id}
+                                    label={`${apk.name} (${apk.package_name})`}
+                                    variant={selectedApkId === apk.id ? "filled" : "outlined"}
+                                    color={selectedApkId === apk.id ? "primary" : "default"}
+                                    onClick={() => setSelectedApkId(apk.id)}
+                                    sx={{ cursor: 'pointer' }}
+                                />
+                            ))}
+                            {importedApks.length === 0 && (
+                                <Alert severity="info">
+                                    No APKs imported. Go to AVD Manager → Import APK to add DIVA or other apps for analysis.
+                                </Alert>
+                            )}
+                        </Box>
+                    </Box>
+
                     <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
                         <Paper sx={{ p: 2 }}>
                             <Typography variant="h6" gutterBottom color="error">
@@ -558,13 +661,19 @@ export const ReverseEngineering = () => {
                                 variant="contained" 
                                 color="error" 
                                 size="small"
-                                onClick={() => {
-                                    // TODO: Implement APK analysis
-                                    console.log("APK Analysis triggered");
-                                }}
+                                onClick={analyzeSelectedApk}
+                                disabled={!selectedApkId || analysisLoading}
+                                startIcon={analysisLoading ? <CircularProgress size={16} /> : undefined}
                             >
-                                Analyze APK
+                                {analysisLoading ? 'Analyzing...' : 'Analyze APK'}
                             </Button>
+                            {analysisResult && (
+                                <Alert severity="success" sx={{ mt: 2 }}>
+                                    ✅ Analysis complete! Found {analysisResult.permissions.length} permissions, 
+                                    {analysisResult.dangerous_permissions.length} dangerous permissions, 
+                                    and {analysisResult.security_issues.length} security issues.
+                                </Alert>
+                            )}
                         </Paper>
 
                         <Paper sx={{ p: 2 }}>
