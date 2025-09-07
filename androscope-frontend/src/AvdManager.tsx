@@ -18,6 +18,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { emit } from '@tauri-apps/api/event';
 
 interface AvdDevice {
     name: string;
@@ -154,6 +155,11 @@ export const AvdManager = () => {
         return () => clearInterval(interval);
     }, []);
 
+    // Emit connected devices whenever they change
+    useEffect(() => {
+        emit('connected_devices', { value: connectedDevices });
+    }, [connectedDevices]);
+
     return (
         <Box sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
@@ -281,17 +287,7 @@ export const AvdManager = () => {
                                             <Typography variant="h6" sx={{ flexGrow: 1 }}>
                                                 {apk.name}
                                             </Typography>
-                                            <FormControlLabel
-                                                control={
-                                                    <Switch
-                                                        checked={apk.auto_install}
-                                                        onChange={(e) => toggleAutoInstall(apk.id, e.target.checked)}
-                                                        size="small"
-                                                    />
-                                                }
-                                                label=""
-                                                sx={{ m: 0 }}
-                                            />
+
                                         </Box>
                                         
                                         <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -309,17 +305,7 @@ export const AvdManager = () => {
                                             )}
                                         </Typography>
 
-                                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                                            {apk.auto_install && (
-                                                <Chip 
-                                                    label="Auto-Install" 
-                                                    color="success" 
-                                                    size="small" 
-                                                    icon={<AutoAwesomeIcon />}
-                                                    sx={{ mr: 1 }}
-                                                />
-                                            )}
-                                        </Box>
+
 
                                         <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                                             <Button

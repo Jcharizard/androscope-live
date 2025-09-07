@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useProcessManager } from './ProcessManager';
 import {
   Box,
   Typography,
@@ -17,15 +18,18 @@ import {
   AccordionDetails,
   Chip,
   Alert,
-  Grid,
   Card,
   CardContent,
   List,
   ListItem,
   ListItemText,
-  Divider,
   IconButton,
-  Tooltip
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  CircularProgress,
+  InputAdornment
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -34,7 +38,7 @@ import {
   VpnKey as VpnKeyIcon,
   Search as SearchIcon,
   Refresh as RefreshIcon,
-  Download as DownloadIcon
+  Clear as ClearIcon
 } from '@mui/icons-material';
 
 interface MemoryDump {
@@ -58,119 +62,169 @@ interface CryptoKey {
 }
 
 const MemoryAnalyzer: React.FC = () => {
-  const [processName, setProcessName] = useState('');
   const [memoryDumps, setMemoryDumps] = useState<MemoryDump[]>([]);
   const [extractedStrings, setExtractedStrings] = useState<string[]>([]);
   const [cryptoKeys, setCryptoKeys] = useState<CryptoKey[]>([]);
   const [processMaps, setProcessMaps] = useState<string[]>([]);
   const [apkAnalysis, setApkAnalysis] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [minStringLength, setMinStringLength] = useState(8);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredStrings, setFilteredStrings] = useState<string[]>([]);
+  
+  const { runningProcesses, selectedProcess, setSelectedProcess } = useProcessManager();
+  
+  // Loading states for each operation
+  const [extractStringsLoading, setExtractStringsLoading] = useState(false);
+  const [dumpMemoryLoading, setDumpMemoryLoading] = useState(false);
+  const [findCryptoLoading, setFindCryptoLoading] = useState(false);
+  const [processMapsLoading, setProcessMapsLoading] = useState(false);
+  const [analyzeApkLoading, setAnalyzeApkLoading] = useState(false);
+
+  // Don't auto-load processes on mount - wait for user to click Refresh
+  useEffect(() => {
+    // Component mounted - no auto-loading
+  }, []);
+
+  // Filter strings based on search query
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredStrings(extractedStrings);
+    } else {
+      const filtered = extractedStrings.filter(str => 
+        str.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredStrings(filtered);
+    }
+  }, [extractedStrings, searchQuery]);
+
 
   const dumpProcessMemory = async () => {
-    if (!processName.trim()) {
-      setError('Please enter a process name');
+    if (!selectedProcess.trim()) {
+      setError('Please select a process first');
       return;
     }
 
-    setLoading(true);
+    setDumpMemoryLoading(true);
     setError(null);
     
     try {
+      console.log('Calling dump_process_memory with:', selectedProcess.trim());
       const dumps: MemoryDump[] = await invoke('dump_process_memory', { 
-        processName: processName.trim() 
+        packageName: selectedProcess.trim() 
       });
       setMemoryDumps(dumps);
+      console.log('Memory dump result:', dumps);
     } catch (err) {
+      console.error('Memory dump error:', err);
       setError(`Failed to dump memory: ${err}`);
+      setMemoryDumps([]);
     } finally {
-      setLoading(false);
+      setDumpMemoryLoading(false);
     }
   };
 
   const extractStrings = async () => {
-    if (!processName.trim()) {
-      setError('Please enter a process name');
+    if (!selectedProcess.trim()) {
+      setError('Please select a process first');
       return;
     }
 
-    setLoading(true);
+    setExtractStringsLoading(true);
     setError(null);
     
     try {
+      console.log('Calling extract_strings_from_memory with:', { 
+        package_name: selectedProcess.trim(), 
+        min_length: minStringLength 
+      });
       const strings: string[] = await invoke('extract_strings_from_memory', { 
-        processName: processName.trim(),
+        packageName: selectedProcess.trim(),
         minLength: minStringLength
       });
       setExtractedStrings(strings);
+      console.log('Extract strings result:', strings.length, 'strings found');
     } catch (err) {
+      console.error('Extract strings error:', err);
       setError(`Failed to extract strings: ${err}`);
+      setExtractedStrings([]);
     } finally {
-      setLoading(false);
+      setExtractStringsLoading(false);
     }
   };
 
   const findCryptoKeys = async () => {
-    if (!processName.trim()) {
-      setError('Please enter a process name');
+    if (!selectedProcess.trim()) {
+      setError('Please select a process first');
       return;
     }
 
-    setLoading(true);
+    setFindCryptoLoading(true);
     setError(null);
     
     try {
+      console.log('Calling find_crypto_keys with:', selectedProcess.trim());
       const keys: CryptoKey[] = await invoke('find_crypto_keys', { 
-        processName: processName.trim() 
+        packageName: selectedProcess.trim() 
       });
       setCryptoKeys(keys);
+      console.log('Find crypto keys result:', keys);
     } catch (err) {
+      console.error('Find crypto keys error:', err);
       setError(`Failed to find crypto keys: ${err}`);
+      setCryptoKeys([]);
     } finally {
-      setLoading(false);
+      setFindCryptoLoading(false);
     }
   };
 
   const getProcessMaps = async () => {
-    if (!processName.trim()) {
-      setError('Please enter a process name');
+    if (!selectedProcess.trim()) {
+      setError('Please select a process first');
       return;
     }
 
-    setLoading(true);
+    setProcessMapsLoading(true);
     setError(null);
     
     try {
+      console.log('Calling get_process_maps with:', selectedProcess.trim());
       const maps: string[] = await invoke('get_process_maps', { 
-        processName: processName.trim() 
+        packageName: selectedProcess.trim() 
       });
       setProcessMaps(maps);
+      console.log('Process maps result:', maps);
     } catch (err) {
+      console.error('Process maps error:', err);
       setError(`Failed to get process maps: ${err}`);
+      setProcessMaps([]);
     } finally {
-      setLoading(false);
+      setProcessMapsLoading(false);
     }
   };
 
   const analyzeApk = async () => {
-    if (!processName.trim()) {
-      setError('Please enter a package name');
+    if (!selectedProcess.trim()) {
+      setError('Please select a process first');
       return;
     }
 
-    setLoading(true);
+    setAnalyzeApkLoading(true);
     setError(null);
     
     try {
+      console.log('Calling analyze_apk_file with:', selectedProcess.trim());
       const analysis: string[] = await invoke('analyze_apk_file', { 
-        appPackage: processName.trim() 
+        packageName: selectedProcess.trim() 
       });
       setApkAnalysis(analysis);
+      console.log('APK analysis result:', analysis);
     } catch (err) {
+      console.error('APK analysis error:', err);
       setError(`Failed to analyze APK: ${err}`);
+      setApkAnalysis([]);
     } finally {
-      setLoading(false);
+      setAnalyzeApkLoading(false);
     }
   };
 
@@ -187,6 +241,10 @@ const MemoryAnalyzer: React.FC = () => {
     }
   };
 
+  const clearSearch = () => {
+    setSearchQuery('');
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -199,21 +257,68 @@ const MemoryAnalyzer: React.FC = () => {
         </Alert>
       )}
 
+      {/* Process Selection Card */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Process/Package Name"
-                placeholder="e.g. com.example.app or system_server"
-                value={processName}
-                onChange={(e) => setProcessName(e.target.value)}
-                variant="outlined"
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box>
+              <FormControl fullWidth variant="outlined" size="small">
+                <InputLabel>Running Processes</InputLabel>
+                <Select
+                  value={selectedProcess}
+                  onChange={(e) => setSelectedProcess(e.target.value)}
+                  label="Running Processes"
+                >
+                  {runningProcesses.map((app, index) => (
+                    <MenuItem key={index} value={app.package_name}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {app.name} ({app.package_name})
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          PID: {app.pid} | CPU: {app.cpu}% | Memory: {app.memory}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                  {runningProcesses.length === 0 && (
+                    <MenuItem disabled>
+                      <Typography color="text.secondary">No process open...</Typography>
+                    </MenuItem>
+                  )}
+                </Select>
+              </FormControl>
+              <Button
                 size="small"
-              />
-            </Grid>
-            <Grid item xs={12} md={2}>
+                onClick={() => {
+                  // Attach to selected process
+                  console.log('Attached to process:', selectedProcess);
+                }}
+                sx={{ mt: 1 }}
+                startIcon={<SecurityIcon />}
+                disabled={!selectedProcess}
+              >
+                Attach
+              </Button>
+            </Box>
+            <Box sx={{ flex: '1 1 400px', minWidth: '400px' }}>
+              <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
+                💡 <strong>DIVA Challenge 1:</strong> Select DIVA process, then use "Extract Strings" to find credit card numbers!
+              </Alert>
+            </Box>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Extract Strings UI Container - Always Visible */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SearchIcon /> 🔍 String Extractor & Search
+          </Typography>
+          
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+            <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
               <TextField
                 fullWidth
                 label="Min String Length"
@@ -223,252 +328,508 @@ const MemoryAnalyzer: React.FC = () => {
                 variant="outlined"
                 size="small"
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Button
-                  variant="contained"
-                  onClick={dumpProcessMemory}
-                  disabled={loading}
-                  startIcon={<MemoryIcon />}
-                  size="small"
-                >
-                  Dump Memory
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={extractStrings}
-                  disabled={loading}
-                  startIcon={<SearchIcon />}
-                  size="small"
-                >
-                  Extract Strings
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={findCryptoKeys}
-                  disabled={loading}
-                  startIcon={<VpnKeyIcon />}
-                  size="small"
-                  color="secondary"
-                >
-                  Find Crypto
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={getProcessMaps}
-                  disabled={loading}
-                  startIcon={<RefreshIcon />}
-                  size="small"
-                >
-                  Process Maps
-                </Button>
-                <Button
-                  variant="outlined"
-                  onClick={analyzeApk}
-                  disabled={loading}
-                  startIcon={<SecurityIcon />}
-                  size="small"
-                >
-                  Analyze APK
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
+            </Box>
+            <Box sx={{ flex: '1 1 400px', minWidth: '400px' }}>
+              <TextField
+                fullWidth
+                label="Search for specific string..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                variant="outlined"
+                size="small"
+                placeholder="e.g., credit card, password, key, etc."
+                InputProps={{
+                  endAdornment: searchQuery && (
+                    <InputAdornment position="end">
+                      <IconButton onClick={clearSearch} size="small">
+                        <ClearIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Box>
+            <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={extractStrings}
+                disabled={extractStringsLoading || !selectedProcess}
+                startIcon={<SearchIcon />}
+                size="small"
+              >
+                🔍 Extract Strings
+              </Button>
+            </Box>
+          </Box>
+
+          <Alert severity="info" sx={{ mb: 2 }}>
+            💡 <strong>DIVA Challenge 1 Tip:</strong> Look for 13-19 digit numbers (credit cards). 
+            Credit card patterns are highlighted with 💳
+          </Alert>
+
+          {extractStringsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+              <Typography sx={{ ml: 2 }}>Extracting strings from memory...</Typography>
+            </Box>
+          ) : (
+            <Paper sx={{ maxHeight: 400, overflow: 'auto', p: 1 }}>
+              {filteredStrings.length > 0 ? (
+                <>
+                  <Typography variant="caption" color="text.secondary" sx={{ p: 1 }}>
+                    Showing {filteredStrings.length} of {extractedStrings.length} strings
+                    {searchQuery && ` (filtered by "${searchQuery}")`}
+                  </Typography>
+                  <List dense>
+                    {filteredStrings.map((str, index) => (
+                      <ListItem key={index} sx={{ py: 0.5 }}>
+                        <ListItemText 
+                          primary={str}
+                          sx={{ 
+                            fontFamily: 'monospace', 
+                            fontSize: '0.9rem',
+                            color: /^\d{13,19}$/.test(str) ? 'error.main' : 
+                                   str.includes('💳') ? 'error.main' : 
+                                   str.toLowerCase().includes('password') ? 'warning.main' : 
+                                   str.toLowerCase().includes('key') ? 'warning.main' : 'text.primary'
+                          }}
+                        />
+                        {/^\d{13,19}$/.test(str) && (
+                          <Chip label="💳 CREDIT CARD!" color="error" size="small" />
+                        )}
+                      </ListItem>
+                    ))}
+                  </List>
+                </>
+              ) : extractedStrings.length > 0 ? (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>
+                    📊 Found {extractedStrings.length} strings total
+                    {searchQuery && ` (0 match "${searchQuery}")`}
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                    No strings match your search "{searchQuery}". Try a different search term or clear the search to see all strings.
+                  </Typography>
+                </Box>
+              ) : (
+                <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                  No strings extracted yet. Select a process and click "🔍 Extract Strings" to start.
+                </Typography>
+              )}
+            </Paper>
+          )}
         </CardContent>
       </Card>
 
-      {/* Crypto Keys Section */}
-      {cryptoKeys.length > 0 && (
-        <Accordion defaultExpanded>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      {/* Dump Memory UI Container - Always Visible */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <VpnKeyIcon /> Cryptographic Keys Found ({cryptoKeys.length})
+              <MemoryIcon /> 📊 Memory Dump Results
             </Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            <TableContainer component={Paper}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Timestamp</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Size</TableCell>
-                    <TableCell>Key Data</TableCell>
-                    <TableCell>Location</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {cryptoKeys.map((key, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{key.timestamp}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={key.key_type} 
-                          color={getSeverityColor(key.key_type) as any}
-                          size="small" 
-                        />
-                      </TableCell>
-                      <TableCell>{key.key_size}</TableCell>
-                      <TableCell sx={{ 
-                        maxWidth: 300, 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis',
-                        fontFamily: 'monospace',
-                        fontSize: '0.8rem'
-                      }}>
-                        {key.key_data}
-                      </TableCell>
-                      <TableCell>{key.location}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </AccordionDetails>
-        </Accordion>
-      )}
-
-      {/* Memory Dumps Section */}
-      {memoryDumps.length > 0 && (
-        <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <MemoryIcon /> Memory Dumps ({memoryDumps.length})
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            {memoryDumps.map((dump, index) => (
-              <Card key={index} sx={{ mb: 2 }}>
-                <CardContent>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Region: {dump.memory_region} | Permissions: {dump.permissions} | Size: {dump.size}
-                  </Typography>
-                  
-                  {dump.strings.length > 0 && (
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="subtitle2" gutterBottom>Extracted Strings:</Typography>
-                      <List dense>
-                        {dump.strings.slice(0, 10).map((str, strIndex) => (
-                          <ListItem key={strIndex}>
-                            <ListItemText 
-                              primary={str}
-                              sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
-                            />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Box>
-                  )}
-                  
-                  <Accordion>
+            <Button
+              variant="contained"
+              onClick={dumpProcessMemory}
+              disabled={dumpMemoryLoading || !selectedProcess}
+              startIcon={<MemoryIcon />}
+              size="small"
+            >
+              📊 Dump Memory
+            </Button>
+          </Box>
+          
+          {dumpMemoryLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+              <Typography sx={{ ml: 2 }}>Dumping process memory...</Typography>
+            </Box>
+          ) : (
+            <>
+              {memoryDumps.length > 0 ? (
+                memoryDumps.map((dump, index) => (
+                  <Accordion key={index} sx={{ mb: 1 }}>
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                      <Typography variant="subtitle2">Raw Hex Data</Typography>
+                      <Typography variant="subtitle1">
+                        🗂️ Region: {dump.memory_region} | Permissions: {dump.permissions}
+                      </Typography>
                     </AccordionSummary>
                     <AccordionDetails>
-                      <Box sx={{ 
-                        fontFamily: 'monospace', 
-                        fontSize: '0.7rem', 
-                        backgroundColor: '#f5f5f5', 
-                        p: 1, 
-                        borderRadius: 1,
-                        maxHeight: 200,
-                        overflow: 'auto'
-                      }}>
-                        {dump.hex_data}
-                      </Box>
+                      <Typography variant="body2" gutterBottom>
+                        📍 PID: {dump.pid} | Size: {dump.size}
+                      </Typography>
+                      
+                      {dump.strings.length > 0 && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="subtitle2" gutterBottom>🔤 Extracted Strings:</Typography>
+                          <Paper sx={{ p: 1, maxHeight: 200, overflow: 'auto' }}>
+                            {dump.strings.map((str, strIndex) => (
+                              <Typography key={strIndex} sx={{ 
+                                fontFamily: 'monospace', 
+                                fontSize: '0.8rem',
+                                color: /^\d{13,19}$/.test(str) ? 'error.main' : 'text.primary'
+                              }}>
+                                {str} {/^\d{13,19}$/.test(str) && '💳'}
+                              </Typography>
+                            ))}
+                          </Paper>
+                        </Box>
+                      )}
                     </AccordionDetails>
                   </Accordion>
+                ))
+              ) : (
+                <Alert severity="info">No memory regions dumped yet. Select a process and click "📊 Dump Memory" to start.</Alert>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Find Crypto UI Container - Always Visible */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <VpnKeyIcon /> 🔐 Cryptographic Material Scanner
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={findCryptoKeys}
+              disabled={findCryptoLoading || !selectedProcess}
+              startIcon={<VpnKeyIcon />}
+              size="small"
+              color="secondary"
+            >
+              🔐 Find Crypto
+            </Button>
+          </Box>
+          
+          {findCryptoLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+              <Typography sx={{ ml: 2 }}>Scanning for cryptographic keys...</Typography>
+            </Box>
+          ) : (
+            <>
+              {cryptoKeys.length > 0 ? (
+                <TableContainer component={Paper}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>🕐 Time</TableCell>
+                        <TableCell>🔑 Type</TableCell>
+                        <TableCell>📏 Size</TableCell>
+                        <TableCell>🔤 Key Data</TableCell>
+                        <TableCell>📍 Location</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {cryptoKeys.map((key, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{new Date(key.timestamp).toLocaleTimeString()}</TableCell>
+                          <TableCell>
+                            <Chip 
+                              label={key.key_type} 
+                              color={getSeverityColor(key.key_type) as any}
+                              size="small" 
+                            />
+                          </TableCell>
+                          <TableCell>{key.key_size}</TableCell>
+                          <TableCell sx={{ 
+                            maxWidth: 300, 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis',
+                            fontFamily: 'monospace',
+                            fontSize: '0.8rem'
+                          }}>
+                            {key.key_data}
+                          </TableCell>
+                          <TableCell>{key.location}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Alert severity="info">No crypto scan performed yet. Select a process and click "🔐 Find Crypto" to start.</Alert>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Process Maps UI Container - Always Visible */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <MemoryIcon /> 🗺️ Process Memory Maps
+            </Typography>
+            <Button
+              variant="outlined"
+              onClick={getProcessMaps}
+              disabled={processMapsLoading || !selectedProcess}
+              startIcon={<RefreshIcon />}
+              size="small"
+            >
+              🗺️ Process Maps
+            </Button>
+          </Box>
+          
+          <Alert severity="info" sx={{ mb: 2 }}>
+            📋 Memory layout showing address ranges, permissions, and mapped files/libraries.
+          </Alert>
+
+          {processMapsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+              <Typography sx={{ ml: 2 }}>Loading process memory maps...</Typography>
+            </Box>
+          ) : (
+            <Paper sx={{ p: 1, maxHeight: 500, overflow: 'auto' }}>
+              {processMaps.length > 0 ? (
+                <pre style={{ 
+                  fontSize: '0.7rem', 
+                  margin: 0, 
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'monospace'
+                }}>
+                  {processMaps.join('\n')}
+                </pre>
+              ) : (
+                <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                  No process maps loaded yet. Select a process and click "🗺️ Process Maps" to start.
+                </Typography>
+              )}
+            </Paper>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Analyze APK UI Container - Always Visible */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <SecurityIcon /> 📱 APK Analysis Report
+            </Typography>
+            <Button
+              variant="outlined"
+              onClick={analyzeApk}
+              disabled={analyzeApkLoading || !selectedProcess}
+              startIcon={<SecurityIcon />}
+              size="small"
+            >
+              📱 Analyze APK
+            </Button>
+          </Box>
+          
+          {analyzeApkLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+              <Typography sx={{ ml: 2 }}>Analyzing APK file...</Typography>
+            </Box>
+          ) : (
+            <Paper sx={{ p: 2, maxHeight: 400, overflow: 'auto' }}>
+              {apkAnalysis.length > 0 ? (
+                apkAnalysis.map((line, index) => (
+                  <Typography key={index} sx={{ 
+                    fontFamily: line.startsWith('📱') || line.startsWith('📦') || line.startsWith('📊') ? 'inherit' : 'monospace',
+                    fontSize: line.startsWith('📱') || line.startsWith('📦') || line.startsWith('📊') ? '0.9rem' : '0.8rem',
+                    fontWeight: line.startsWith('📱') || line.startsWith('📦') || line.startsWith('📊') ? 'bold' : 'normal',
+                    mb: 0.5
+                  }}>
+                    {line}
+                  </Typography>
+                ))
+              ) : (
+                <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                  No APK analysis performed yet. Select a process and click "📱 Analyze APK" to start.
+                </Typography>
+                )}
+            </Paper>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Advanced Runtime Manipulation */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <SecurityIcon /> 🚀 Advanced Runtime Manipulation
+          </Typography>
+          
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            {/* Code Injection */}
+            <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom>
+                    💉 Code Injection
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={async () => {
+                        if (!selectedProcess) return;
+                        try {
+                          await invoke('inject_code_before_method', { 
+                            packageName: selectedProcess,
+                            targetClass: 'jakhar.aseem.diva.MainActivity',
+                            targetMethod: 'onCreate',
+                            customCode: 'console.log("Code injected before onCreate");'
+                          });
+                        } catch (error) {
+                          console.error('Failed to inject code:', error);
+                        }
+                      }}
+                      disabled={!selectedProcess}
+                    >
+                      Inject Before
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={async () => {
+                        if (!selectedProcess) return;
+                        try {
+                          await invoke('inject_code_after_method', { 
+                            packageName: selectedProcess,
+                            targetClass: 'jakhar.aseem.diva.MainActivity',
+                            targetMethod: 'onCreate',
+                            customCode: 'console.log("Code injected after onCreate");'
+                          });
+                        } catch (error) {
+                          console.error('Failed to inject code:', error);
+                        }
+                      }}
+                      disabled={!selectedProcess}
+                    >
+                      Inject After
+                    </Button>
+                  </Box>
                 </CardContent>
               </Card>
-            ))}
-          </AccordionDetails>
-        </Accordion>
-      )}
+            </Box>
 
-      {/* Extracted Strings Section */}
-      {extractedStrings.length > 0 && (
-        <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SearchIcon /> Extracted Strings ({extractedStrings.length})
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            <List sx={{ maxHeight: 400, overflow: 'auto' }}>
-              {extractedStrings.map((str, index) => (
-                <React.Fragment key={index}>
-                  <ListItem>
-                    <ListItemText 
-                      primary={str}
-                      sx={{ 
-                        fontFamily: 'monospace', 
-                        fontSize: '0.8rem',
-                        color: str.includes('🔑') ? 'error.main' : str.includes('🔐') ? 'warning.main' : 'text.primary'
+            {/* Method Overriding */}
+            <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom>
+                    🔄 Method Override
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      size="small"
+                      onClick={async () => {
+                        if (!selectedProcess) return;
+                        try {
+                          await invoke('override_method', { 
+                            packageName: selectedProcess,
+                            className: 'jakhar.aseem.diva.MainActivity',
+                            methodName: 'isPremium',
+                            newBehavior: 'return true; // Always return premium'
+                          });
+                        } catch (error) {
+                          console.error('Failed to override method:', error);
+                        }
                       }}
-                    />
-                  </ListItem>
-                  {index < extractedStrings.length - 1 && <Divider />}
-                </React.Fragment>
-              ))}
-            </List>
-          </AccordionDetails>
-        </Accordion>
-      )}
+                      disabled={!selectedProcess}
+                    >
+                      Override isPremium
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      size="small"
+                      onClick={async () => {
+                        if (!selectedProcess) return;
+                        try {
+                          await invoke('override_method', { 
+                            packageName: selectedProcess,
+                            className: 'jakhar.aseem.diva.MainActivity',
+                            methodName: 'validateLicense',
+                            newBehavior: 'return true; // Always validate'
+                          });
+                        } catch (error) {
+                          console.error('Failed to override method:', error);
+                        }
+                      }}
+                      disabled={!selectedProcess}
+                    >
+                      Override License
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Box>
 
-      {/* Process Maps Section */}
-      {processMaps.length > 0 && (
-        <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="h6">Process Maps & Info</Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            {processMaps.map((map, index) => (
-              <Box key={index} sx={{ mb: 2 }}>
-                <Paper sx={{ p: 2 }}>
-                  <pre style={{ 
-                    fontSize: '0.7rem', 
-                    margin: 0, 
-                    whiteSpace: 'pre-wrap',
-                    maxHeight: 300,
-                    overflow: 'auto'
-                  }}>
-                    {map}
-                  </pre>
-                </Paper>
-              </Box>
-            ))}
-          </AccordionDetails>
-        </Accordion>
-      )}
+            {/* Memory Patching */}
+            <Box sx={{ flex: '1 1 300px', minWidth: '300px' }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom>
+                    🧩 Memory Patch
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      size="small"
+                      onClick={async () => {
+                        if (!selectedProcess) return;
+                        try {
+                          await invoke('patch_memory', { 
+                            packageName: selectedProcess,
+                            targetAddress: '0x12345678',
+                            newValue: 'premium_user'
+                          });
+                        } catch (error) {
+                          console.error('Failed to patch memory:', error);
+                        }
+                      }}
+                      disabled={!selectedProcess}
+                    >
+                      Patch Memory
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      size="small"
+                      onClick={async () => {
+                        if (!selectedProcess) return;
+                        try {
+                          await invoke('search_and_replace_memory', { 
+                            packageName: selectedProcess,
+                            searchPattern: 'trial_user',
+                            replacementValue: 'premium_user'
+                          });
+                        } catch (error) {
+                          console.error('Failed to search and replace memory:', error);
+                        }
+                      }}
+                      disabled={!selectedProcess}
+                    >
+                      Search & Replace
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Box>
+          </Box>
 
-      {/* APK Analysis Section */}
-      {apkAnalysis.length > 0 && (
-        <Accordion>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SecurityIcon /> APK Analysis
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails>
-            {apkAnalysis.map((analysis, index) => (
-              <Box key={index} sx={{ mb: 2 }}>
-                <Paper sx={{ p: 2 }}>
-                  <pre style={{ 
-                    fontSize: '0.7rem', 
-                    margin: 0, 
-                    whiteSpace: 'pre-wrap',
-                    maxHeight: 400,
-                    overflow: 'auto'
-                  }}>
-                    {analysis}
-                  </pre>
-                </Paper>
-              </Box>
-            ))}
-          </AccordionDetails>
-        </Accordion>
-      )}
+          <Alert severity="info" sx={{ mt: 2 }}>
+            <strong>💡 Advanced Features:</strong> These tools provide Frida-level runtime manipulation capabilities without external dependencies.
+            Use them to modify app behavior, inject custom code, and patch memory values in real-time.
+          </Alert>
+        </CardContent>
+      </Card>
     </Box>
   );
 };

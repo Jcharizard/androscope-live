@@ -13,11 +13,18 @@ AndroScope is a powerful, real-time Android application analysis platform built 
 - **Timeline Analysis** - Millisecond-precision event tracking (API Monitor style)
 
 ### 🔧 **Reverse Engineering Suite**
-- **APK Analysis** - Static analysis of Android applications
-- **Memory Dumps** - Extract sensitive data from running apps
-- **Method Tracing** - Function call logging with parameters
+- **APK Analysis** - Static analysis of Android applications with detailed security reports
+- **Memory Dumps** - Extract sensitive data from running apps with string filtering
+- **Method Tracing** - Function call logging with parameters and call stack analysis
 - **SSL Pinning Bypass** - HTTPS traffic interception capabilities
 - **Certificate Analysis** - App signing and trust chain analysis
+- **Runtime Code Injection** - Inject custom code before/after methods (Frida-level capabilities)
+- **Method Overriding** - Replace method implementations at runtime
+- **Memory Patching** - Modify memory values in real-time
+- **API Hooking** - Intercept system calls and API functions
+- **Dynamic Script Execution** - Run custom scripts on device
+- **Global Process Synchronization** - Seamless process selection across all tools
+- **Auto-Refresh Process List** - Real-time process monitoring with 5-second polling
 
 ### 🛡️ **Security Detection**
 - **35+ Security Patterns** - Automatic detection of vulnerabilities
@@ -25,6 +32,13 @@ AndroScope is a powerful, real-time Android application analysis platform built 
 - **Behavioral Analysis** - Suspicious activity detection
 - **JWT Token Detection** - Authentication token discovery
 - **Crypto Operations** - Encryption/decryption monitoring
+- **DIVA Challenge Solver** - Automated solution for all DIVA challenges with one-click solving
+- **Input Validation Bypass** - SQL injection, XSS, and validation bypasses
+- **Hardcoded Secrets Discovery** - Find credentials and sensitive data
+- **Anti-Analysis Bypass** - Root detection, debug detection, SSL pinning bypass
+- **Real-time Logcat Filtering** - Focus on specific apps with PID-based filtering
+- **Advanced Memory Analysis** - String extraction with credit card detection
+- **Process Memory Maps** - Detailed memory region analysis
 
 ## 🛠️ **Technology Stack**
 
@@ -32,6 +46,25 @@ AndroScope is a powerful, real-time Android application analysis platform built 
 - **Backend**: Rust + Tauri
 - **Platform**: Cross-platform desktop application
 - **Analysis**: ADB integration for Android debugging
+
+## 🆕 **Latest Updates (v2.0)**
+
+### **🔧 Major Improvements:**
+- **Global Process Synchronization** - Process selection now syncs across all tools automatically
+- **Auto-Refresh Process List** - No more manual refresh buttons, processes update every 5 seconds
+- **Enhanced DIVA Challenge Solver** - One-click solution for all DIVA challenges
+- **Working Runtime Manipulation** - Code injection and method overriding now functional
+- **Real-time Logcat Filtering** - Focus on specific apps with zero spam
+- **Advanced Memory Analysis** - String extraction with credit card detection
+- **Professional UI/UX** - Fixed all HTML structure errors and improved responsiveness
+
+### **🎯 DIVA Challenge Support:**
+- **Input Validation Bypass** - Automated SQL injection and XSS detection
+- **Hardcoded Secrets Discovery** - Find credit card numbers and sensitive data
+- **SSL Pinning Bypass** - HTTPS traffic interception
+- **Root Detection Bypass** - Anti-analysis evasion
+- **Debug Detection Bypass** - Debugger detection evasion
+- **Premium Bypass** - Method overriding for premium features
 
 ## 🚀 **Quick Start**
 

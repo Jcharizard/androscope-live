@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
     Paper, Typography, Box, Button, Accordion, AccordionSummary, AccordionDetails,
     List, ListItem, ListItemText, Chip, CircularProgress, Alert, Tabs, Tab,
-    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Badge
+    Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Badge, Grid
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -14,6 +14,7 @@ import TimelineIcon from '@mui/icons-material/Timeline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
 import { listen, type Event } from '@tauri-apps/api/event';
 
 interface TabPanelProps {
@@ -98,6 +99,7 @@ interface ImportedApk {
 }
 
 export const ReverseEngineering = () => {
+    const [error, setError] = useState<string | null>(null);
     const [tabValue, setTabValue] = useState(0);
     const [networkStats, setNetworkStats] = useState<string[]>([]);
     const [runningApps, setRunningApps] = useState<string[]>([]);
@@ -132,10 +134,13 @@ export const ReverseEngineering = () => {
 
     const refreshAppData = async () => {
         try {
-            const apps = await invoke<string[]>('get_running_apps');
-            setRunningApps(apps);
+            const apps = await invoke<any[]>('get_running_apps');
+            // Convert RunningApp objects to strings for compatibility
+            const appStrings = apps.map(app => `${app.name || app.package_name}: PID ${app.pid}`);
+            setRunningApps(appStrings);
         } catch (error) {
             console.error('Failed to get app data:', error);
+            setRunningApps([]); // Set empty array on error
         }
     };
 
@@ -150,13 +155,19 @@ export const ReverseEngineering = () => {
 
     const refreshAllData = async () => {
         setLoading(true);
-        await Promise.all([
-            refreshNetworkData(), 
-            refreshLiveConnections(),
-            refreshAppData(), 
-            refreshTimelineData()
-        ]);
-        setLoading(false);
+        try {
+            await Promise.all([
+                refreshNetworkData().catch(e => console.warn('Network data failed:', e)), 
+                refreshLiveConnections().catch(e => console.warn('Live connections failed:', e)),
+                refreshAppData().catch(e => console.warn('App data failed:', e)), 
+                refreshTimelineData().catch(e => console.warn('Timeline data failed:', e))
+            ]);
+        } catch (error) {
+            console.error('Failed to refresh data:', error);
+            setError('Failed to load data: ' + String(error));
+        } finally {
+            setLoading(false);
+        }
     };
 
     const toggleLiveMode = () => {
@@ -167,9 +178,12 @@ export const ReverseEngineering = () => {
         try {
             const apks = await invoke<ImportedApk[]>('get_imported_apks');
             setImportedApks(apks);
-            if (apks.length > 0 && !selectedApkId) {
-                setSelectedApkId(apks[0].id);
-            }
+                    if (apks.length > 0 && !selectedApkId) {
+            setSelectedApkId(apks[0].id);
+            // Emit event to update global current APK package
+            emit('apk_selected', { package_name: apks[0].package_name });
+            // Auto-selection happens silently now - no popup spam
+        }
         } catch (error) {
             console.error('Failed to load imported APKs:', error);
         }
@@ -200,8 +214,15 @@ export const ReverseEngineering = () => {
     };
 
     useEffect(() => {
-        refreshAllData();
-        loadImportedApks();
+        // Initialize with safe defaults
+        setNetworkStats([]);
+        setLiveConnections([]);
+        setRunningApps([]);
+        setTimelineEvents([]);
+        
+        // Load data safely
+        refreshAllData().catch(e => console.error('Initial data load failed:', e));
+        loadImportedApks().catch(e => console.error('APK load failed:', e));
         
         // Set up timeline event listener
         const unlistenTimeline = listen('timeline_event', (event: Event<TimelineEvent>) => {
@@ -231,8 +252,9 @@ export const ReverseEngineering = () => {
         setTabValue(newValue);
     };
 
-    const parseNetworkConnections = (data: string) => {
+    const parseNetworkConnections = (data: string | undefined) => {
         const connections: Array<{ip: string, port: string, state: string}> = [];
+        if (!data || typeof data !== 'string') return connections;
         const lines = data.split('\n');
         
         for (const line of lines) {
@@ -250,8 +272,9 @@ export const ReverseEngineering = () => {
         return connections.slice(0, 20); // Limit to first 20 for display
     };
 
-    const parseRunningPackages = (data: string) => {
+    const parseRunningPackages = (data: string | undefined) => {
         const packages: Array<{name: string, path: string}> = [];
+        if (!data || typeof data !== 'string') return packages;
         const lines = data.split('\n');
         
         for (const line of lines) {
@@ -266,6 +289,19 @@ export const ReverseEngineering = () => {
         
         return packages.slice(0, 50); // Limit for display
     };
+
+    if (error) {
+        return (
+            <Box sx={{ width: '100%', p: 2 }}>
+                <Alert severity="error" sx={{ mb: 2 }}>
+                    <strong>Component Error:</strong> {error}
+                    <Button onClick={() => {setError(null); window.location.reload();}} sx={{ ml: 2 }}>
+                        Reload Page
+                    </Button>
+                </Alert>
+            </Box>
+        );
+    }
 
     return (
         <Box sx={{ p: 3 }}>
@@ -528,7 +564,7 @@ export const ReverseEngineering = () => {
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
-                                            {parseRunningPackages(runningApps[0] || '').map((pkg, index) => (
+                                            {parseRunningPackages(runningApps[0]).map((pkg, index) => (
                                                 <TableRow key={index}>
                                                     <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
                                                         {pkg.name}
@@ -635,9 +671,15 @@ export const ReverseEngineering = () => {
                                 <Chip
                                     key={apk.id}
                                     label={`${apk.name} (${apk.package_name})`}
-                                    variant={selectedApkId === apk.id ? "filled" : "outlined"}
-                                    color={selectedApkId === apk.id ? "primary" : "default"}
-                                    onClick={() => setSelectedApkId(apk.id)}
+                                                                variant={selectedApkId === apk.id ? "filled" : "outlined"}
+                            color={selectedApkId === apk.id ? "primary" : "default"}
+                            onClick={() => {
+                                setSelectedApkId(apk.id);
+                                // Emit event to update global current APK package
+                                emit('apk_selected', { package_name: apk.package_name });
+                                // Show confirmation popup
+                                alert(`📱 APK Selected!\n\n✅ Name: ${apk.name}\n📦 Package: ${apk.package_name}\n💾 Size: ${(apk.size / 1024 / 1024).toFixed(1)} MB\n📅 Imported: ${new Date(apk.imported_date).toLocaleDateString()}\n\n🎯 Ready for analysis!\n🔍 Click "Analyze APK" to start static analysis.`);
+                            }}
                                     sx={{ cursor: 'pointer' }}
                                 />
                             ))}
@@ -657,22 +699,126 @@ export const ReverseEngineering = () => {
                             <Typography variant="body2" sx={{ mb: 2 }}>
                                 Extract comprehensive information from installed APKs including manifest, certificates, and package details.
                             </Typography>
-                            <Button 
-                                variant="contained" 
-                                color="error" 
-                                size="small"
-                                onClick={analyzeSelectedApk}
-                                disabled={!selectedApkId || analysisLoading}
-                                startIcon={analysisLoading ? <CircularProgress size={16} /> : undefined}
-                            >
-                                {analysisLoading ? 'Analyzing...' : 'Analyze APK'}
-                            </Button>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button 
+                                    variant="contained" 
+                                    color="error" 
+                                    size="small"
+                                    onClick={analyzeSelectedApk}
+                                    disabled={!selectedApkId || analysisLoading}
+                                    startIcon={analysisLoading ? <CircularProgress size={16} /> : undefined}
+                                >
+                                    {analysisLoading ? 'Analyzing...' : 'Analyze APK'}
+                                </Button>
+                                <Button 
+                                    variant="outlined" 
+                                    color="warning" 
+                                    size="small"
+                                    onClick={async () => {
+                                        if (!selectedApkId) {
+                                            alert('Please select an APK first');
+                                            return;
+                                        }
+                                        try {
+                                            const strings = await invoke('extract_apk_strings', { apkId: selectedApkId });
+                                            let message = '🔍 APK Strings Extraction Complete!\n\n';
+                                            if (strings.hardcoded_secrets && strings.hardcoded_secrets.length > 0) {
+                                                message += '🚨 HARDCODED SECRETS FOUND:\n';
+                                                strings.hardcoded_secrets.forEach((secret, idx) => {
+                                                    message += `${idx + 1}. ${secret}\n`;
+                                                });
+                                                message += '\n💡 Try these values in DIVA Challenge 1!\n';
+                                            }
+                                            if (strings.urls && strings.urls.length > 0) {
+                                                message += `\n🌐 URLs Found: ${strings.urls.length}\n`;
+                                            }
+                                            if (strings.api_keys && strings.api_keys.length > 0) {
+                                                message += `🔑 API Keys Found: ${strings.api_keys.length}\n`;
+                                            }
+                                            message += `\n📊 Total Strings: ${strings.total_strings || 'N/A'}`;
+                                            alert(message);
+                                        } catch (error) {
+                                            alert('Failed to extract strings: ' + error);
+                                        }
+                                    }}
+                                    disabled={!selectedApkId}
+                                >
+                                    🔍 Extract Strings
+                                </Button>
+                            </Box>
                             {analysisResult && (
-                                <Alert severity="success" sx={{ mt: 2 }}>
-                                    ✅ Analysis complete! Found {analysisResult.permissions.length} permissions, 
-                                    {analysisResult.dangerous_permissions.length} dangerous permissions, 
-                                    and {analysisResult.security_issues.length} security issues.
-                                </Alert>
+                                <Box sx={{ mt: 2 }}>
+                                    <Alert severity="success" sx={{ mb: 2 }}>
+                                        ✅ APK Analysis Complete! 
+                                    </Alert>
+                                    
+                                    <Grid container spacing={2}>
+                                        <Grid item xs={12} md={6}>
+                                            <Paper sx={{ p: 2, mb: 2 }}>
+                                                <Typography variant="h6" gutterBottom color="primary">
+                                                    📱 App Information
+                                                </Typography>
+                                                <Typography><strong>Package:</strong> {analysisResult.package_name}</Typography>
+                                                <Typography><strong>Version:</strong> {analysisResult.version_name} ({analysisResult.version_code})</Typography>
+                                                <Typography><strong>Min SDK:</strong> {analysisResult.min_sdk}</Typography>
+                                                <Typography><strong>Target SDK:</strong> {analysisResult.target_sdk}</Typography>
+                                            </Paper>
+                                        </Grid>
+                                        
+                                        <Grid item xs={12} md={6}>
+                                            <Paper sx={{ p: 2, mb: 2 }}>
+                                                <Typography variant="h6" gutterBottom color="warning.main">
+                                                    🚨 Security Overview
+                                                </Typography>
+                                                <Typography><strong>Total Permissions:</strong> {analysisResult.permissions.length}</Typography>
+                                                <Typography color="error"><strong>Dangerous Permissions:</strong> {analysisResult.dangerous_permissions.length}</Typography>
+                                                <Typography color="error"><strong>Security Issues:</strong> {analysisResult.security_issues.length}</Typography>
+                                                <Typography><strong>Exported Components:</strong> {analysisResult.exported_components.length}</Typography>
+                                            </Paper>
+                                        </Grid>
+                                        
+                                        {analysisResult.dangerous_permissions.length > 0 && (
+                                            <Grid item xs={12}>
+                                                <Paper sx={{ p: 2, mb: 2, bgcolor: 'error.light', color: 'error.contrastText' }}>
+                                                    <Typography variant="h6" gutterBottom>
+                                                        ⚠️ Dangerous Permissions Detected
+                                                    </Typography>
+                                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                                        {analysisResult.dangerous_permissions.map((perm, idx) => (
+                                                            <Chip 
+                                                                key={idx} 
+                                                                label={perm} 
+                                                                color="error" 
+                                                                size="small"
+                                                                variant="outlined"
+                                                            />
+                                                        ))}
+                                                    </Box>
+                                                </Paper>
+                                            </Grid>
+                                        )}
+                                        
+                                        {analysisResult.security_issues.length > 0 && (
+                                            <Grid item xs={12}>
+                                                <Paper sx={{ p: 2, mb: 2, bgcolor: 'warning.light', color: 'warning.contrastText' }}>
+                                                    <Typography variant="h6" gutterBottom>
+                                                        🔍 Security Issues Found
+                                                    </Typography>
+                                                    <List dense>
+                                                        {analysisResult.security_issues.map((issue, idx) => (
+                                                            <ListItem key={idx}>
+                                                                <ListItemText 
+                                                                    primary={issue}
+                                                                    primaryTypographyProps={{ color: 'text.primary' }}
+                                                                />
+                                                            </ListItem>
+                                                        ))}
+                                                    </List>
+                                                </Paper>
+                                            </Grid>
+                                        )}
+                                    </Grid>
+                                </Box>
                             )}
                         </Paper>
 
@@ -687,13 +833,28 @@ export const ReverseEngineering = () => {
                                 variant="contained" 
                                 color="warning" 
                                 size="small"
-                                onClick={() => {
-                                    // TODO: Implement memory dump
-                                    console.log("Memory dump triggered");
+                                onClick={async () => {
+                                    if (!selectedApkId) {
+                                        alert('Please select an APK first');
+                                        return;
+                                    }
+                                    const selectedApk = importedApks.find(apk => apk.id === selectedApkId);
+                                    if (!selectedApk) return;
+                                    
+                                    try {
+                                        // Go to Memory Analyzer page for full functionality
+                                        alert(`🧠 Memory Analysis Available!\n\n✅ Package: ${selectedApk.package_name}\n💡 Go to "Memory Analyzer" page for:\n\n🔍 Process Memory Dumping\n🔤 String Extraction\n🔑 Crypto Key Discovery\n📊 Memory Region Analysis\n\n🎯 Full memory analysis tools are in the dedicated Memory Analyzer page!`);
+                                    } catch (error) {
+                                        alert('Memory analysis failed: ' + error);
+                                    }
                                 }}
+                                disabled={!selectedApkId}
                             >
-                                Dump Memory
+                                🧠 Go to Memory Analyzer
                             </Button>
+                            <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                                Full memory analysis tools available in Memory Analyzer page
+                            </Typography>
                         </Paper>
 
                         <Paper sx={{ p: 2 }}>
@@ -701,19 +862,36 @@ export const ReverseEngineering = () => {
                                 🔒 SSL Pinning Bypass
                             </Typography>
                             <Typography variant="body2" sx={{ mb: 2 }}>
-                                Bypass SSL certificate pinning to intercept HTTPS traffic with proxy tools.
+                                Comprehensive SSL certificate pinning bypass (12 techniques) to intercept HTTPS traffic.
                             </Typography>
                             <Button 
                                 variant="contained" 
                                 color="info" 
                                 size="small"
-                                onClick={() => {
-                                    // TODO: Implement SSL bypass
-                                    console.log("SSL bypass triggered");
+                                onClick={async () => {
+                                    if (!selectedApkId) {
+                                        alert('Please select an APK first');
+                                        return;
+                                    }
+                                    const selectedApk = importedApks.find(apk => apk.id === selectedApkId);
+                                    if (!selectedApk) return;
+                                    
+                                    try {
+                                        const result = await invoke('apply_ssl_pinning_bypass', { 
+                                            packageName: selectedApk.package_name 
+                                        });
+                                        alert(`🔥 SSL Pinning Bypass Applied!\n\n✅ Package: ${selectedApk.package_name}\n🔓 HTTPS traffic is now interceptable\n🛡️ Configure Burp Suite/OWASP ZAP proxy\n📊 Check Logcat for detailed results`);
+                                    } catch (error) {
+                                        alert('SSL bypass failed: ' + error);
+                                    }
                                 }}
+                                disabled={!selectedApkId || analysisLoading}
                             >
-                                Bypass SSL
+                                🔥 Bypass SSL
                             </Button>
+                            <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                                Bypasses: OkHttp, TrustManager, WebView, Volley, Apache HTTP + more
+                            </Typography>
                         </Paper>
 
                         <Paper sx={{ p: 2 }}>
@@ -747,30 +925,68 @@ export const ReverseEngineering = () => {
                                 variant="contained" 
                                 sx={{ bgcolor: '#9c27b0', '&:hover': { bgcolor: '#7b1fa2' } }}
                                 size="small"
-                                onClick={() => {
-                                    // TODO: Implement certificate analysis
-                                    console.log("Certificate analysis triggered");
+                                onClick={async () => {
+                                    if (!selectedApkId) {
+                                        alert('Please select an APK first');
+                                        return;
+                                    }
+                                    const selectedApk = importedApks.find(apk => apk.id === selectedApkId);
+                                    if (!selectedApk) return;
+                                    
+                                    try {
+                                        const certificates = await invoke('extract_apk_certificates', { apkId: selectedApkId });
+                                        const cert = certificates[0]; // Get first certificate
+                                        alert(`📜 Certificate Analysis Complete!\n\n✅ Subject: ${cert.subject}\n🏢 Issuer: ${cert.issuer}\n🔢 Serial: ${cert.serial_number}\n📅 Valid: ${cert.not_before} to ${cert.not_after}\n🔐 Algorithm: ${cert.signature_algorithm}\n🔑 Key: ${cert.public_key_algorithm}\n🐛 Debug Cert: ${cert.is_debug_certificate ? 'YES' : 'NO'}\n✍️ Self-Signed: ${cert.is_self_signed ? 'YES' : 'NO'}`);
+                                    } catch (error) {
+                                        alert('Certificate analysis failed: ' + error);
+                                    }
                                 }}
+                                disabled={!selectedApkId || analysisLoading}
                             >
-                                Analyze Certs
+                                📜 Analyze Certs
                             </Button>
+                            <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                                Extracts signing certificates, validates trust chain, detects debug certs
+                            </Typography>
                         </Paper>
 
                         <Paper sx={{ p: 2 }}>
                             <Typography variant="h6" gutterBottom sx={{ color: '#ff5722' }}>
-                                🚀 Frida Integration
+                                🚀 One-Click Bypass Suite
                             </Typography>
                             <Typography variant="body2" sx={{ mb: 2 }}>
-                                Dynamic instrumentation for real-time code manipulation and hooking.
+                                Apply all security bypasses automatically: SSL, Root Detection, Debug Detection.
                             </Typography>
                             <Button 
                                 variant="contained" 
                                 sx={{ bgcolor: '#ff5722', '&:hover': { bgcolor: '#e64a19' } }}
                                 size="small"
-                                disabled
+                                onClick={async () => {
+                                    if (!selectedApkId) {
+                                        alert('Please select an APK first');
+                                        return;
+                                    }
+                                    const selectedApk = importedApks.find(apk => apk.id === selectedApkId);
+                                    if (!selectedApk) return;
+                                    
+                                    try {
+                                        const results = await invoke('apply_automated_bypass_suite', { 
+                                            packageName: selectedApk.package_name 
+                                        });
+                                        const successCount = results.filter(r => r.success).length;
+                                        const totalCount = results.length;
+                                        alert(`🚀 Automated Bypass Suite Complete!\n\n✅ Package: ${selectedApk.package_name}\n📊 Success Rate: ${successCount}/${totalCount} bypasses\n\n🔓 Applied Bypasses:\n• SSL Pinning Bypass\n• Root Detection Bypass\n• Debug Detection Bypass\n\n🎯 Your app is now ready for analysis!\n📱 Check Logcat for detailed results`);
+                                    } catch (error) {
+                                        alert('Automated bypass suite failed: ' + error);
+                                    }
+                                }}
+                                disabled={!selectedApkId || analysisLoading}
                             >
-                                Coming Soon
+                                🚀 Apply All Bypasses
                             </Button>
+                            <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                                One-click security bypass suite for comprehensive app analysis
+                            </Typography>
                         </Paper>
                     </Box>
 

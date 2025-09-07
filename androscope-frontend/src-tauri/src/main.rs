@@ -11,6 +11,8 @@ use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 mod debugger;
+mod runtime_manipulator;
+mod diva_challenge_solver;
 
 // --- Data Structures ---
 
@@ -245,18 +247,90 @@ fn get_emulator_path() -> String {
 
 #[tauri::command]
 async fn analyze_apk_static(apk_id: String) -> Result<ApkAnalysisResult, String> {
-    let apks = load_apk_metadata().map_err(|e| format!("Failed to load APK metadata: {}", e))?;
+    let apks = load_apk_metadata();
     let apk = apks.iter().find(|a| a.id == apk_id)
         .ok_or_else(|| "APK not found".to_string())?;
 
-    // Use aapt to analyze the APK
+    // Try to find aapt in multiple locations
     let adb_path = get_adb_path();
-    let aapt_path = adb_path.replace("adb.exe", "aapt.exe");
+    let mut aapt_paths = vec![
+        adb_path.replace("adb.exe", "aapt.exe"),
+        adb_path.replace("platform-tools\\adb.exe", "build-tools\\34.0.0\\aapt.exe"),
+        adb_path.replace("platform-tools\\adb.exe", "build-tools\\33.0.2\\aapt.exe"),
+        adb_path.replace("platform-tools\\adb.exe", "build-tools\\32.0.0\\aapt.exe"),
+        adb_path.replace("platform-tools\\adb.exe", "build-tools\\31.0.0\\aapt.exe"),
+        adb_path.replace("platform-tools\\adb.exe", "build-tools\\30.0.3\\aapt.exe"),
+    ];
     
-    let output = Command::new(&aapt_path)
-        .args(["dump", "badging", &apk.file_path])
-        .output()
-        .map_err(|e| format!("Failed to run aapt: {}", e))?;
+    // Add common Android SDK paths
+    let username = std::env::var("USERNAME").unwrap_or_else(|_| "user".to_string());
+    aapt_paths.push(format!("C:\\Users\\{}\\AppData\\Local\\Android\\Sdk\\build-tools\\34.0.0\\aapt.exe", username));
+    aapt_paths.push(format!("C:\\Users\\{}\\AppData\\Local\\Android\\Sdk\\build-tools\\33.0.2\\aapt.exe", username));
+    
+    let mut aapt_path = String::new();
+    let mut aapt_found = false;
+    
+    // Try to find a working aapt
+    for path in aapt_paths {
+        if std::path::Path::new(&path).exists() {
+            aapt_path = path;
+            aapt_found = true;
+            break;
+        }
+    }
+    
+    let output = if aapt_found {
+        // Try to run aapt
+        match Command::new(&aapt_path)
+            .args(["dump", "badging", &apk.file_path])
+            .output() {
+            Ok(output) => output,
+            Err(e) => {
+                return Ok(ApkAnalysisResult {
+                    package_name: apk.package_name.clone(),
+                    version_name: "Unknown (aapt execution failed)".to_string(),
+                    version_code: "Unknown".to_string(),
+                    min_sdk: "Unknown".to_string(),
+                    target_sdk: "Unknown".to_string(),
+                    permissions: vec!["⚠️ aapt execution failed".to_string()],
+                    activities: vec![],
+                    services: vec![],
+                    receivers: vec![],
+                    providers: vec![],
+                    exported_components: vec![],
+                    dangerous_permissions: vec!["🚨 aapt execution failed".to_string()],
+                    security_issues: vec![
+                        format!("🛠️ aapt found at: {}", aapt_path),
+                        format!("❌ Execution error: {}", e),
+                        "💡 Check if APK file is valid".to_string()
+                    ],
+                });
+            }
+        }
+    } else {
+        return Ok(ApkAnalysisResult {
+            package_name: apk.package_name.clone(),
+            version_name: "Unknown (aapt not found)".to_string(),
+            version_code: "Unknown".to_string(),
+            min_sdk: "Unknown".to_string(),
+            target_sdk: "Unknown".to_string(),
+            permissions: vec!["⚠️ Android SDK build-tools not found".to_string()],
+            activities: vec!["📱 Install Android Studio or Android SDK".to_string()],
+            services: vec!["🔧 aapt.exe not found in any expected location".to_string()],
+            receivers: vec![],
+            providers: vec![],
+            exported_components: vec![],
+            dangerous_permissions: vec!["🚨 Cannot analyze without aapt tool".to_string()],
+            security_issues: vec![
+                "🛠️ Install Android SDK build-tools for complete analysis".to_string(),
+                "📍 Searched locations:".to_string(),
+                format!("  • {}", adb_path.replace("adb.exe", "aapt.exe")),
+                format!("  • C:\\Users\\{}\\AppData\\Local\\Android\\Sdk\\build-tools\\[VERSION]\\aapt.exe", username),
+                "💡 Alternative: Use online APK analyzers like APKAnalyzer.org".to_string(),
+                "🔧 Or install Android Studio which includes build-tools".to_string()
+            ],
+        });
+    };
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     
@@ -299,7 +373,7 @@ async fn analyze_apk_static(apk_id: String) -> Result<ApkAnalysisResult, String>
 
 #[tauri::command]
 async fn extract_apk_strings(apk_id: String) -> Result<ApkStringsResult, String> {
-    let apks = load_apk_metadata().map_err(|e| format!("Failed to load APK metadata: {}", e))?;
+    let apks = load_apk_metadata();
     let apk = apks.iter().find(|a| a.id == apk_id)
         .ok_or_else(|| "APK not found".to_string())?;
 
@@ -319,7 +393,7 @@ async fn extract_apk_strings(apk_id: String) -> Result<ApkStringsResult, String>
     };
 
     // Extract URLs
-    let url_regex = regex::Regex::new(r"https?://[^\s<>\"']+").unwrap();
+    let url_regex = regex::Regex::new(r"https?://[^\s<>]+").unwrap();
     for cap in url_regex.captures_iter(&content_str) {
         if let Some(url) = cap.get(0) {
             strings_result.urls.push(url.as_str().to_string());
@@ -334,11 +408,23 @@ async fn extract_apk_strings(apk_id: String) -> Result<ApkStringsResult, String>
         }
     }
 
+    // Extract credit card numbers (DIVA Challenge 1)
+    let cc_regex = regex::Regex::new(r"\b\d{13,19}\b").unwrap();
+    for cap in cc_regex.captures_iter(&content_str) {
+        if let Some(cc) = cap.get(0) {
+            let cc_str = cc.as_str();
+            // Only include if it looks like a valid credit card (13-19 digits)
+            if cc_str.len() >= 13 && cc_str.len() <= 19 && cc_str != "123123123123123123" {
+                strings_result.hardcoded_secrets.push(format!("Credit Card: {}", cc_str));
+            }
+        }
+    }
+
     // Extract potential API keys
     let api_key_patterns = [
-        r"[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]['\"\s:=]+([A-Za-z0-9_-]{20,})",
-        r"[Tt][Oo][Kk][Ee][Nn]['\"\s:=]+([A-Za-z0-9_-]{20,})",
-        r"[Ss][Ee][Cc][Rr][Ee][Tt]['\"\s:=]+([A-Za-z0-9_-]{20,})",
+        r"[Aa][Pp][Ii][_-]?[Kk][Ee][Yy][\s:=]+([A-Za-z0-9_-]{20,})",
+        r"[Tt][Oo][Kk][Ee][Nn][\s:=]+([A-Za-z0-9_-]{20,})",
+        r"[Ss][Ee][Cc][Rr][Ee][Tt][\s:=]+([A-Za-z0-9_-]{20,})",
     ];
 
     for pattern in &api_key_patterns {
@@ -359,7 +445,7 @@ async fn extract_apk_strings(apk_id: String) -> Result<ApkStringsResult, String>
 
 #[tauri::command]
 async fn get_apk_manifest(apk_id: String) -> Result<String, String> {
-    let apks = load_apk_metadata().map_err(|e| format!("Failed to load APK metadata: {}", e))?;
+    let apks = load_apk_metadata();
     let apk = apks.iter().find(|a| a.id == apk_id)
         .ok_or_else(|| "APK not found".to_string())?;
 
@@ -377,7 +463,7 @@ async fn get_apk_manifest(apk_id: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn extract_apk_certificates(apk_id: String) -> Result<Vec<ApkCertificateInfo>, String> {
-    let apks = load_apk_metadata().map_err(|e| format!("Failed to load APK metadata: {}", e))?;
+    let apks = load_apk_metadata();
     let apk = apks.iter().find(|a| a.id == apk_id)
         .ok_or_else(|| "APK not found".to_string())?;
 
@@ -401,7 +487,7 @@ async fn extract_apk_certificates(apk_id: String) -> Result<Vec<ApkCertificateIn
 
 #[tauri::command]
 async fn detect_apk_packers(apk_id: String) -> Result<PackerDetectionResult, String> {
-    let apks = load_apk_metadata().map_err(|e| format!("Failed to load APK metadata: {}", e))?;
+    let apks = load_apk_metadata();
     let apk = apks.iter().find(|a| a.id == apk_id)
         .ok_or_else(|| "APK not found".to_string())?;
 
@@ -478,16 +564,89 @@ fn is_dangerous_permission(permission: &str) -> bool {
 fn analyze_security_issues(analysis: &ApkAnalysisResult) -> Vec<String> {
     let mut issues = Vec::new();
     
+    // Dangerous permissions analysis
     if analysis.dangerous_permissions.len() > 5 {
-        issues.push("High number of dangerous permissions requested".to_string());
+        issues.push(format!("🚨 HIGH RISK: {} dangerous permissions (normal apps use 2-3)", analysis.dangerous_permissions.len()));
     }
     
-    if analysis.min_sdk.parse::<i32>().unwrap_or(0) < 21 {
-        issues.push("Low minimum SDK version - potential security vulnerabilities".to_string());
+    // SDK version analysis
+    let min_sdk = analysis.min_sdk.parse::<i32>().unwrap_or(0);
+    if min_sdk < 21 {
+        issues.push(format!("⚠️ SECURITY RISK: Min SDK {} is outdated (vulnerable to known exploits)", min_sdk));
+    }
+    if min_sdk < 16 {
+        issues.push("🔴 CRITICAL: Extremely old SDK - multiple critical vulnerabilities".to_string());
     }
     
-    if analysis.permissions.iter().any(|p| p.contains("SYSTEM_ALERT_WINDOW")) {
-        issues.push("Can draw over other apps - potential overlay attack".to_string());
+    // Permission-specific security issues
+    for perm in &analysis.dangerous_permissions {
+        match perm.as_str() {
+            "android.permission.SYSTEM_ALERT_WINDOW" => {
+                issues.push("🎯 OVERLAY ATTACK: Can draw over other apps (steal credentials, fake UI)".to_string());
+            },
+            "android.permission.WRITE_EXTERNAL_STORAGE" => {
+                issues.push("📁 DATA LEAKAGE: Can write to external storage (accessible by other apps)".to_string());
+            },
+            "android.permission.READ_EXTERNAL_STORAGE" => {
+                issues.push("📂 PRIVACY RISK: Can read all external storage files".to_string());
+            },
+            "android.permission.CAMERA" => {
+                issues.push("📷 SURVEILLANCE: Can access camera (potential spying)".to_string());
+            },
+            "android.permission.RECORD_AUDIO" => {
+                issues.push("🎤 EAVESDROPPING: Can record audio (potential surveillance)".to_string());
+            },
+            "android.permission.ACCESS_FINE_LOCATION" => {
+                issues.push("📍 TRACKING: Can access precise location (privacy concern)".to_string());
+            },
+            "android.permission.READ_CONTACTS" => {
+                issues.push("👥 DATA HARVESTING: Can read all contacts (privacy violation)".to_string());
+            },
+            "android.permission.READ_SMS" => {
+                issues.push("📱 SMS INTERCEPTION: Can read SMS messages (2FA bypass risk)".to_string());
+            },
+            "android.permission.SEND_SMS" => {
+                issues.push("💸 PREMIUM SMS: Can send SMS (potential billing fraud)".to_string());
+            },
+            "android.permission.CALL_PHONE" => {
+                issues.push("📞 UNAUTHORIZED CALLS: Can make phone calls (billing fraud risk)".to_string());
+            },
+            "android.permission.WRITE_SETTINGS" => {
+                issues.push("⚙️ SYSTEM MODIFICATION: Can modify system settings (potential malicious changes)".to_string());
+            },
+            "android.permission.INSTALL_PACKAGES" => {
+                issues.push("📦 MALWARE INSTALLATION: Can install apps (potential trojan dropper)".to_string());
+            },
+            _ => {}
+        }
+    }
+    
+    // Exported components analysis
+    if analysis.exported_components.len() > 10 {
+        issues.push(format!("🔓 ATTACK SURFACE: {} exported components (potential entry points for attacks)", analysis.exported_components.len()));
+    }
+    
+    // Common vulnerability patterns
+    if analysis.activities.iter().any(|a| a.contains("WebView")) {
+        issues.push("🌐 WEB VULNERABILITY: WebView detected (potential XSS/code injection)".to_string());
+    }
+    
+    if analysis.permissions.iter().any(|p| p.contains("BIND_DEVICE_ADMIN")) {
+        issues.push("👑 ADMIN PRIVILEGES: Device admin permission (can wipe device, change passwords)".to_string());
+    }
+    
+    if analysis.permissions.iter().any(|p| p.contains("ACCESSIBILITY_SERVICE")) {
+        issues.push("♿ ACCESSIBILITY ABUSE: Can monitor all UI interactions (keylogging, screen reading)".to_string());
+    }
+    
+    // Backup and debugging flags
+    if analysis.target_sdk.parse::<i32>().unwrap_or(30) < 28 {
+        issues.push("🔐 BACKUP VULNERABILITY: Older target SDK allows backup by default (data extraction)".to_string());
+    }
+    
+    if issues.is_empty() {
+        issues.push("✅ No obvious security issues detected in static analysis".to_string());
+        issues.push("💡 Perform dynamic analysis for runtime vulnerabilities".to_string());
     }
     
     issues
@@ -523,15 +682,31 @@ fn main() {
             debugger::attach_debugger,
             debugger::set_breakpoint,
             debugger::get_call_stack,
-            debugger::dump_memory_region,
-            debugger::search_memory_strings,
+
             debugger::hook_method,
-            debugger::modify_memory_value,
             debugger::start_frida_session,
             debugger::apply_ssl_pinning_bypass,
             debugger::apply_root_detection_bypass,
-            debugger::create_method_tracer,
             debugger::apply_debug_detection_bypass,
+            // Runtime manipulation commands
+            runtime_manipulator::inject_code_before_method,
+            runtime_manipulator::inject_code_after_method,
+            runtime_manipulator::override_method,
+            runtime_manipulator::patch_memory,
+            runtime_manipulator::hook_api_call,
+            runtime_manipulator::execute_runtime_script,
+            runtime_manipulator::search_and_replace_memory,
+            runtime_manipulator::start_realtime_monitoring,
+            // DIVA challenge solver commands
+            diva_challenge_solver::solve_input_validation_challenge,
+            diva_challenge_solver::solve_sql_injection_challenge,
+            diva_challenge_solver::solve_xss_challenge,
+            diva_challenge_solver::solve_hardcoded_secrets_challenge,
+            diva_challenge_solver::solve_ssl_pinning_challenge,
+            diva_challenge_solver::solve_root_detection_challenge,
+            diva_challenge_solver::solve_debug_detection_challenge,
+            diva_challenge_solver::solve_all_diva_challenges,
+            diva_challenge_solver::get_challenge_status,
             get_imported_apks,
             import_apk,
             install_imported_apk,
@@ -541,7 +716,15 @@ fn main() {
             extract_apk_strings,
             get_apk_manifest,
             extract_apk_certificates,
-            detect_apk_packers
+            detect_apk_packers,
+            start_focused_logcat,
+            reset_focused_logcat,
+            extract_strings_from_memory,
+            dump_process_memory,
+            find_crypto_keys,
+            get_process_maps,
+            analyze_apk_file,
+            get_running_apps
         ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -595,11 +778,37 @@ async fn start_adb_polling(app_handle: AppHandle<Wry>) {
     }
 }
 
+// Global flag to stop regular logcat when focused mode starts
+static FOCUSED_MODE_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 // --- Logcat Streaming and Scanning ---
 async fn start_logcat_stream(app_handle: AppHandle<Wry>) {
     let adb_path = get_adb_path();
     let mut command = match Command::new(&adb_path)
-        .arg("logcat")
+        .args([
+            "logcat", 
+            "-v", "time",
+            // Filter for app-relevant logs only
+            "*:W",  // Show Warning level and above for all (reduces noise)
+            // But show all levels for important app-related tags
+            "ActivityManager:V",
+            "PackageManager:V", 
+            "dalvikvm:V",
+            "AndroidRuntime:V",
+            "System.err:V",
+            "DEBUG:V",
+            "SQLiteDatabase:V",
+            "Database:V",
+            "NetworkSecurityConfig:V",
+            "OkHttp:V",
+            "Volley:V",
+            "HttpURLConnection:V",
+            "TrustManagerImpl:V",
+            "X509TrustManagerExtensions:V",
+            "CertificatePinner:V",
+            "SSL:V",
+            "TLS:V"
+        ])
         .stdout(Stdio::piped())
         .spawn() {
         Ok(cmd) => cmd,
@@ -613,11 +822,664 @@ async fn start_logcat_stream(app_handle: AppHandle<Wry>) {
         let reader = BufReader::new(stdout);
         for line in reader.lines() {
             if let Ok(line) = line {
+                // Check if focused mode is active - if so, stop regular logcat
+                if FOCUSED_MODE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
+                    eprintln!("Regular logcat stopped - focused mode active");
+                    break; // Exit the regular logcat loop
+                }
+                
+                // Filter out noisy system logs
+                if should_filter_logcat_line(&line) {
+                    continue;
+                }
+                
                 app_handle.emit("logcat", LogcatPayload { r#type: "logcat".to_string(), value: line.clone() }).unwrap();
                 scan_log_for_iocs(&line, &app_handle);
             }
         }
     }
+}
+
+// Filter out noisy system logs that aren't useful for app analysis
+fn should_filter_logcat_line(line: &str) -> bool {
+    let noise_patterns = [
+        "EGL_emulation",
+        "eglMakeCurrent",
+        "eglCreateContext",
+        "eglCreateWindowSurface",
+        "Binder:",
+        "AvrcpMediaPlayerList",
+        "InputReader",
+        "FedAssExpListener", 
+        "anhw",
+        "Scheduling Phenotype",
+        "Access denied finding property",
+        "audit(",
+        "avc: denied",
+        "PACKAGE_CHANGED",
+        "Reconfiguring input devices",
+        "Looper",
+        "No package ID 7f found",
+        "gralloc_ranchu",
+        "HostConnection",
+        "GnssLocationProvider",
+        "ConnectivityService",
+        "WifiService",
+        "BluetoothAdapter",
+        "MediaSessionService",
+        "PowerManagerService",
+        "BatteryService",
+        "LocationManagerService",
+        "WindowManager",
+        "InputMethodManagerService"
+    ];
+    
+    // Filter out lines containing noise patterns
+    for pattern in &noise_patterns {
+        if line.contains(pattern) {
+            return true;
+        }
+    }
+    
+    // Keep lines that might be app-relevant
+    let keep_patterns = [
+        "diva",
+        "DIVA",
+        "jakhar",
+        "credit",
+        "card",
+        "checkout",
+        "error",
+        "exception",
+        "sqlite",
+        "database",
+        "http",
+        "ssl",
+        "certificate",
+        "auth",
+        "login",
+        "password",
+        "token",
+        "api",
+        "network",
+        "permission",
+        "denied",
+        "security"
+    ];
+    
+    // If line contains app-relevant keywords, always keep it
+    for pattern in &keep_patterns {
+        if line.to_lowercase().contains(&pattern.to_lowercase()) {
+            return false; // Don't filter (keep the line)
+        }
+    }
+    
+    false // Don't filter by default
+}
+
+// Start focused logcat for a specific app package
+fn should_show_focused_log(line: &str, package_name: &str) -> bool {
+    let line_lower = line.to_lowercase();
+    let package_lower = package_name.to_lowercase();
+    
+    // FIRST: Block ALL the noise patterns - ULTRA AGGRESSIVE
+    let noise_patterns = [
+        // Original noise patterns
+        "openglrenderer", "failed to choose config", "egl_swap_behavior_preserved",
+        "keyboardmodemanager", "setinputview", "androidime", "keyboardviewmanager",
+        "initializeviews", "keyboard full width", "headsetphonestate", "startlistenfor",
+        "s.messaging:rc", "accessing hidden field", "accessing hidden method",
+        "ljava/util/collections", "synchronizedcollection", "synchronizedset",
+        "gralloc4", "allocator 3.x is not supported", "broadcastqueue", "permission denial",
+        "broadcasting intent", "googlelocationsettings", "internal_broadcast",
+        "buglercse", "rcsclientlib", "fa-svc", "system_server", "phenotypecombinedflags",
+        "sqlitelog", "service not registered", "no package id", "config package",
+        "process_stable", "baselinecl", "heterodyneinfo", "androidpackagename",
+        "install referrer", "unexpected error", "service response is missing",
+        "reflection, denied", "greylist-max-o", "mutex:ljava", "registeredreceiver",
+        "broadcastfilter", "receiverlist", "remote:",
+        // NEW: Block the latest spam patterns you reported
+        "auth", "authmanaged", "passwordcomplexityhelperimpl", "updating password complexity",
+        "activitytaskmanager", "start u0", "android.intent.action.main", "category.launcher",
+        "activitymanager", "start proc", "pre-top-activity", "connectiontracker",
+        "exception thrown while unbinding", "artmanagerinternalimpl", "compiled_traces",
+        "doesn't exist", "displayed", "finsky:background", "reading task failed",
+        "http data error", "device lost connectivity", "sslprotocolexception", "read error",
+        "ssl library", "protocol error", "cipher functions", "openssl_internal",
+        "bad_decrypt", "ssl routines", "decryption_failed_or_bad_record_mac", "iorapd",
+        "perfetto", "tracebuffer", "saved to file", "raw_traces", "perfetto_trace.pb"
+    ];
+    
+    // Block ALL noise first - this is the priority
+    for pattern in &noise_patterns {
+        if line_lower.contains(pattern) {
+            return false;
+        }
+    }
+    
+    // ONLY show if it's a DIVA app log (not system logs about DIVA)
+    // Must contain diva/jakhar AND be an actual app log (not system management)
+    if (line_lower.contains("diva") || line_lower.contains("jakhar")) {
+        // Check if it's actually from the DIVA app process, not system managing DIVA
+        if line_lower.contains("diva-log") || 
+           line_lower.contains("system.out") || 
+           line_lower.contains("system.err") ||
+           (line_lower.contains("jakhar.aseem.diva") && 
+            (line_lower.contains("error") || line_lower.contains("exception") || 
+             line_lower.contains("credit") || line_lower.contains("card") ||
+             line_lower.contains("checkout") || line_lower.contains("login") ||
+             line_lower.contains("database") || line_lower.contains("sqlite"))) {
+            return true;
+        }
+    }
+    
+    // ONLY show critical security events that are definitely app-related
+    let critical_security = ["credit", "card", "checkout", "login", "password", "database", "sqlite"];
+    for keyword in &critical_security {
+        if line_lower.contains(keyword) {
+            // Must be from app process, not system
+            if line_lower.contains("diva") || line_lower.contains("jakhar") {
+                return true;
+            }
+        }
+    }
+    
+    // Block EVERYTHING else by default - be extremely strict
+    false
+}
+
+#[tauri::command]
+async fn start_focused_logcat(app_handle: AppHandle, package_name: String) -> Result<String, String> {
+    let adb_path = get_adb_path();
+    let package_name_clone = package_name.clone();
+    
+    // Kill any existing logcat processes to stop regular stream
+    let _kill_result = Command::new(&adb_path)
+        .args(["shell", "pkill", "-f", "logcat"])
+        .output();
+    
+    // Clear existing logcat buffer
+    let _clear_result = Command::new(&adb_path)
+        .args(["logcat", "-c"])
+        .output();
+    
+    // Set the focused mode flag to stop regular logcat
+    FOCUSED_MODE_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+    eprintln!("Focused mode activated - stopping regular logcat");
+    
+    tokio::spawn(async move {
+        // Get the PID of the target app - be more aggressive about finding it
+        let mut target_pid = None;
+        
+        // Try multiple methods to get the PID
+        for attempt in 0..15 {
+            // Method 1: pidof command
+            let pid_result = Command::new(&adb_path)
+                .args(["shell", "pidof", &package_name_clone])
+                .output();
+            
+            if let Ok(output) = pid_result {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                let pid_str = output_str.trim();
+                if !pid_str.is_empty() {
+                    target_pid = Some(pid_str.to_string());
+                    eprintln!("Found PID {} for package {}", pid_str, package_name_clone);
+                    break;
+                }
+            }
+            
+            // Method 2: ps command as backup
+            let ps_result = Command::new(&adb_path)
+                .args(["shell", "ps", "|", "grep", &package_name_clone])
+                .output();
+                
+            if let Ok(output) = ps_result {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                for line in output_str.lines() {
+                    if line.contains(&package_name_clone) {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() > 1 {
+                            target_pid = Some(parts[1].to_string());
+                            eprintln!("Found PID {} via ps for package {}", parts[1], package_name_clone);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if target_pid.is_some() {
+                break;
+            }
+            
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        }
+        
+        // Get regular logcat and filter in Rust code for reliability
+        let mut command = Command::new(&adb_path)
+            .args([
+                "logcat", 
+                "-v", "time"
+            ])
+            .stdout(Stdio::piped())
+            .spawn();
+        
+        let mut command = match command {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                eprintln!("Failed to start focused logcat: {}", e);
+                return;
+            }
+        };
+
+        if let Some(stdout) = command.stdout.take() {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    // Filter by PID in Rust code for reliability
+                    if let Some(pid) = &target_pid {
+                        // Check if the line contains the exact PID pattern: "( PID)"
+                        let pid_pattern = format!("( {})", pid);
+                        if line.contains(&pid_pattern) {
+                            // Only emit lines that contain our target PID
+                            app_handle.emit("focused_logcat", LogcatPayload { 
+                                r#type: "focused".to_string(), 
+                                value: format!("[FOCUSED] {}", line) 
+                            }).unwrap();
+                            
+                            // Still scan for IOCs
+                            scan_log_for_iocs(&line, &app_handle);
+                        }
+                        // Silently ignore all other lines (different PIDs)
+                    }
+                    // If no PID found, emit nothing (complete silence)
+                }
+            }
+        }
+    });
+    
+    Ok(format!("Started focused logcat monitoring for package: {}", package_name))
+}
+
+#[tauri::command]
+async fn reset_focused_logcat() -> Result<String, String> {
+    // Reset the focused mode flag to allow regular logcat to resume
+    FOCUSED_MODE_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
+    eprintln!("Focused mode deactivated - regular logcat can resume");
+    Ok("Focused mode reset".to_string())
+}
+
+#[tauri::command]
+async fn extract_strings_from_memory(packageName: String, minLength: u32) -> Result<Vec<String>, String> {
+    let adb_path = get_adb_path();
+    
+    // Get the PID of the target app
+    let pid_result = Command::new(&adb_path)
+        .args(["shell", "pidof", &packageName])
+        .output()
+        .map_err(|e| format!("Failed to get PID: {}", e))?;
+    
+    let output_str = String::from_utf8_lossy(&pid_result.stdout);
+    let pid_str = output_str.trim();
+    if pid_str.is_empty() {
+        return Err(format!("App {} is not running", packageName));
+    }
+    
+    // Get memory maps for the process
+    let maps_result = Command::new(&adb_path)
+        .args(["shell", "cat", &format!("/proc/{}/maps", pid_str)])
+        .output()
+        .map_err(|e| format!("Failed to get memory maps: {}", e))?;
+    
+    let maps_str = String::from_utf8_lossy(&maps_result.stdout);
+    let mut strings = Vec::new();
+    
+    // Look for heap and data segments
+    for line in maps_str.lines() {
+        if line.contains("heap") || line.contains("[anon:") || line.contains("rw-p") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() > 0 {
+                let addr_range = parts[0];
+                if let Some((start, end)) = addr_range.split_once('-') {
+                    // Try to dump memory from this region (simplified approach)
+                    let dump_result = Command::new(&adb_path)
+                        .args(["shell", "su", "-c", &format!("dd if=/proc/{}/mem bs=1 skip=$((0x{})) count=$((0x{} - 0x{})) 2>/dev/null | strings -n {}", 
+                               pid_str, start, end, start, minLength)])
+                        .output();
+                    
+                    if let Ok(output) = dump_result {
+                        let output_str = String::from_utf8_lossy(&output.stdout);
+                        for string in output_str.lines() {
+                            let trimmed = string.trim();
+                            if trimmed.len() >= minLength as usize {
+                                // Look for potential credit card numbers (13-19 digits)
+                                if trimmed.chars().all(|c| c.is_ascii_digit()) && trimmed.len() >= 13 && trimmed.len() <= 19 {
+                                    strings.push(format!("💳 Credit Card: {}", trimmed));
+                                } else if trimmed.len() >= minLength as usize && trimmed.len() <= 50 {
+                                    strings.push(trimmed.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Remove duplicates and limit results
+    strings.sort();
+    strings.dedup();
+    strings.truncate(100);
+    
+    if strings.is_empty() {
+        strings.push("No strings found. Try running as root or with lower min length.".to_string());
+    }
+    
+    Ok(strings)
+}
+
+#[tauri::command]
+async fn dump_process_memory(packageName: String) -> Result<Vec<MemoryDump>, String> {
+    let adb_path = get_adb_path();
+    
+    // Get the PID of the target app
+    let pid_result = Command::new(&adb_path)
+        .args(["shell", "pidof", &packageName])
+        .output()
+        .map_err(|e| format!("Failed to get PID: {}", e))?;
+    
+    let output_str = String::from_utf8_lossy(&pid_result.stdout);
+    let pid_str = output_str.trim();
+    if pid_str.is_empty() {
+        return Err(format!("App {} is not running", packageName));
+    }
+    
+    // Get memory maps for the process
+    let maps_result = Command::new(&adb_path)
+        .args(["shell", "cat", &format!("/proc/{}/maps", pid_str)])
+        .output()
+        .map_err(|e| format!("Failed to get memory maps: {}", e))?;
+    
+    let maps_str = String::from_utf8_lossy(&maps_result.stdout);
+    let mut dumps = Vec::new();
+    
+    // Look for heap and data segments
+    for line in maps_str.lines().take(10) { // Limit to first 10 regions
+        if line.contains("heap") || line.contains("[anon:") || line.contains("rw-p") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() > 0 {
+                let addr_range = parts[0];
+                let permissions = parts.get(1).unwrap_or(&"").to_string();
+                
+                // Try to extract strings from this region
+                let mut region_strings = Vec::new();
+                if let Some((start, _end)) = addr_range.split_once('-') {
+                    let dump_result = Command::new(&adb_path)
+                        .args(["shell", "su", "-c", &format!("strings /proc/{}/mem 2>/dev/null | head -20", pid_str)])
+                        .output();
+                    
+                    if let Ok(output) = dump_result {
+                        let output_str = String::from_utf8_lossy(&output.stdout);
+                        for string in output_str.lines().take(20) {
+                            let trimmed = string.trim();
+                            if trimmed.len() >= 4 {
+                                region_strings.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+                
+                let dump = MemoryDump {
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    process_name: packageName.clone(),
+                    pid: pid_str.to_string(),
+                    memory_region: addr_range.to_string(),
+                    size: "Unknown".to_string(),
+                    permissions,
+                    strings: region_strings,
+                    hex_data: "Use hex viewer for raw data".to_string(),
+                };
+                dumps.push(dump);
+            }
+        }
+    }
+    
+    if dumps.is_empty() {
+        dumps.push(MemoryDump {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            process_name: packageName.clone(),
+            pid: pid_str.to_string(),
+            memory_region: "No accessible regions".to_string(),
+            size: "0".to_string(),
+            permissions: "N/A".to_string(),
+            strings: vec!["No strings extracted. May require root access.".to_string()],
+            hex_data: "N/A".to_string(),
+        });
+    }
+    
+    Ok(dumps)
+}
+
+#[tauri::command]
+async fn find_crypto_keys(packageName: String) -> Result<Vec<CryptoKey>, String> {
+    // Use the existing string extraction and look for crypto patterns
+    let strings = extract_strings_from_memory(packageName.clone(), 8).await.unwrap_or_default();
+    let mut crypto_keys = Vec::new();
+    
+    for string in strings {
+        let lower = string.to_lowercase();
+        
+        // Look for common crypto patterns
+        if lower.contains("-----begin") || 
+           lower.contains("private key") || 
+           lower.contains("public key") ||
+           lower.contains("certificate") ||
+           string.len() == 32 || string.len() == 64 { // Common key lengths in hex
+            
+            let key_type = if lower.contains("rsa") {
+                "RSA"
+            } else if lower.contains("aes") {
+                "AES"
+            } else if lower.contains("certificate") {
+                "Certificate"
+            } else if string.len() == 32 {
+                "AES-128 (possible)"
+            } else if string.len() == 64 {
+                "AES-256 (possible)"
+            } else {
+                "Unknown"
+            };
+            
+            crypto_keys.push(CryptoKey {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                process_name: packageName.clone(),
+                key_type: key_type.to_string(),
+                key_size: format!("{} chars", string.len()),
+                key_data: string,
+                location: "Memory".to_string(),
+            });
+        }
+    }
+    
+    if crypto_keys.is_empty() {
+        crypto_keys.push(CryptoKey {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            process_name: packageName.clone(),
+            key_type: "None Found".to_string(),
+            key_size: "0".to_string(),
+            key_data: "No cryptographic material detected in memory strings".to_string(),
+            location: "N/A".to_string(),
+        });
+    }
+    
+    Ok(crypto_keys)
+}
+
+#[tauri::command]
+async fn get_process_maps(packageName: String) -> Result<Vec<String>, String> {
+    let adb_path = get_adb_path();
+    
+    // Get the PID of the target app
+    let pid_result = Command::new(&adb_path)
+        .args(["shell", "pidof", &packageName])
+        .output()
+        .map_err(|e| format!("Failed to get PID: {}", e))?;
+    
+    let output_str = String::from_utf8_lossy(&pid_result.stdout);
+    let pid_str = output_str.trim();
+    if pid_str.is_empty() {
+        return Err(format!("App {} is not running", packageName));
+    }
+    
+    // Get memory maps
+    let maps_result = Command::new(&adb_path)
+        .args(["shell", "cat", &format!("/proc/{}/maps", pid_str)])
+        .output()
+        .map_err(|e| format!("Failed to get memory maps: {}", e))?;
+    
+    let maps_str = String::from_utf8_lossy(&maps_result.stdout);
+    let maps: Vec<String> = maps_str.lines().map(|s| s.to_string()).collect();
+    
+    if maps.is_empty() {
+        Ok(vec!["No memory maps available. Process may have exited.".to_string()])
+    } else {
+        Ok(maps)
+    }
+}
+
+#[tauri::command]
+async fn analyze_apk_file(packageName: String) -> Result<Vec<String>, String> {
+    let adb_path = get_adb_path();
+    
+    // Get APK path
+    let path_result = Command::new(&adb_path)
+        .args(["shell", "pm", "path", &packageName])
+        .output()
+        .map_err(|e| format!("Failed to get APK path: {}", e))?;
+    
+    let path_str = String::from_utf8_lossy(&path_result.stdout);
+    let apk_path = path_str.trim().replace("package:", "");
+    
+    if apk_path.is_empty() {
+        return Err(format!("APK not found for package: {}", packageName));
+    }
+    
+    // Get package info
+    let info_result = Command::new(&adb_path)
+        .args(["shell", "dumpsys", "package", &packageName])
+        .output()
+        .map_err(|e| format!("Failed to get package info: {}", e))?;
+    
+    let info_str = String::from_utf8_lossy(&info_result.stdout);
+    let mut analysis = Vec::new();
+    
+    analysis.push(format!("📱 APK Path: {}", apk_path));
+    analysis.push(format!("📦 Package: {}", packageName));
+    analysis.push("".to_string());
+    analysis.push("📊 Package Information:".to_string());
+    
+    // Extract key information from dumpsys
+    for line in info_str.lines().take(50) {
+        if line.contains("versionName") || 
+           line.contains("versionCode") ||
+           line.contains("targetSdkVersion") ||
+           line.contains("minSdkVersion") ||
+           line.contains("signatures") {
+            analysis.push(format!("  {}", line.trim()));
+        }
+    }
+    
+    Ok(analysis)
+}
+
+#[derive(Serialize, Clone, Debug)]
+struct RunningApp {
+    name: String,
+    package_name: String,
+    pid: String,
+    cpu: String,
+    memory: String,
+}
+
+// Get only currently running user apps (not system processes)
+#[tauri::command]
+async fn get_running_apps() -> Result<Vec<RunningApp>, String> {
+    let adb_path = get_adb_path();
+    
+    // First get all third-party packages
+    let packages_output = Command::new(&adb_path)
+        .args(["shell", "pm", "list", "packages", "-3"])
+        .output()
+        .map_err(|e| format!("Failed to get packages: {}", e))?;
+    
+    let packages_str = String::from_utf8_lossy(&packages_output.stdout);
+    let mut user_packages: Vec<String> = packages_str
+        .lines()
+        .filter_map(|line| {
+            if line.starts_with("package:") {
+                Some(line.replace("package:", "").trim().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    
+    // Don't hardcode any packages - only show actually installed packages
+    
+    // Get running processes
+    let ps_output = Command::new(&adb_path)
+        .args(["shell", "ps", "-A"])
+        .output()
+        .map_err(|e| format!("Failed to get running processes: {}", e))?;
+    
+    let ps_str = String::from_utf8_lossy(&ps_output.stdout);
+    let mut running_apps = Vec::new();
+    
+    // Parse ps output and match with user packages
+    for line in ps_str.lines().skip(1) { // Skip header
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 9 {
+            let pid = parts[1];
+            let cpu = parts[6];
+            let process_name = parts[8];
+            
+            // Check if this process matches any user package
+            for package in &user_packages {
+                if process_name.contains(package) || package.contains(process_name) {
+                    // Get memory usage
+                    let mem_output = Command::new(&adb_path)
+                        .args(["shell", "dumpsys", "meminfo", pid])
+                        .output()
+                        .ok();
+                    
+                    let memory = if let Some(output) = mem_output {
+                        let mem_str = String::from_utf8_lossy(&output.stdout);
+                        mem_str
+                            .lines()
+                            .find(|line| line.contains("TOTAL"))
+                            .and_then(|line| line.split_whitespace().nth(1))
+                            .unwrap_or("0")
+                            .to_string()
+                    } else {
+                        "0".to_string()
+                    };
+                    
+                    running_apps.push(RunningApp {
+                        name: package.split('.').last().unwrap_or(package).to_string(),
+                        package_name: package.clone(),
+                        pid: pid.to_string(),
+                        cpu: cpu.to_string(),
+                        memory: format!("{}KB", memory),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Don't add any fallback - only return actually running apps
+    // If no apps found, return empty list
+    
+    Ok(running_apps)
 }
 
 fn scan_log_for_iocs(log_line: &str, app_handle: &AppHandle<Wry>) {
@@ -1043,38 +1905,7 @@ async fn get_timeline_events() -> Result<Vec<TimelineEvent>, String> {
     Ok(vec![])
 }
 
-#[tauri::command]
-async fn get_running_apps() -> Result<Vec<String>, String> {
-    let adb_path = get_adb_path();
-    
-    // Get detailed app information for reverse engineering
-    let commands = [
-        "shell pm list packages -f", // All packages with paths
-        "shell dumpsys package", // Detailed package info
-        "shell dumpsys activity activities", // Active activities
-        "shell dumpsys activity services", // Running services
-        "shell dumpsys activity broadcasts", // Broadcast receivers
-        "shell dumpsys meminfo", // Memory usage per app
-        "shell top -n 1", // Current resource usage
-    ];
-    
-    let mut results = Vec::new();
-    
-    for cmd_args in commands.iter() {
-        let args: Vec<&str> = cmd_args.split_whitespace().collect();
-        match Command::new(&adb_path).args(&args).output() {
-            Ok(output) => {
-                if output.status.success() {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    results.push(format!("=== {} ===\n{}", cmd_args, stdout));
-                }
-            }
-            Err(_) => continue,
-        }
-    }
-    
-    Ok(results)
-}
+
 
 #[tauri::command]
 async fn execute_adb_command(command: String) -> Result<String, String> {
@@ -1099,8 +1930,8 @@ async fn execute_adb_command(command: String) -> Result<String, String> {
     
     // Execute the ADB command
     match Command::new(&adb_path).args(&parts).output() {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
+            Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             
             if output.status.success() {

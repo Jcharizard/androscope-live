@@ -10,14 +10,13 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import SecurityIcon from '@mui/icons-material/Security';
 import DnsIcon from '@mui/icons-material/Dns';
 import TerminalIcon from '@mui/icons-material/Terminal';
-import DownloadIcon from '@mui/icons-material/Download';
+
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import MemoryIcon from '@mui/icons-material/Memory';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { listen, type Event } from '@tauri-apps/api/event';
-import json2md from 'json2md';
 
 import { LogcatViewer } from './LogcatViewer';
 import { SecurityAlertsViewer } from './SecurityAlertsViewer';
@@ -28,6 +27,8 @@ import { AvdManager } from './AvdManager';
 import { ReverseEngineering } from './ReverseEngineering';
 import MemoryAnalyzer from './MemoryAnalyzer';
 import { Debugger } from './Debugger';
+import DivaChallengeSolver from './DivaChallengeSolver';
+import { ProcessManagerProvider } from './ProcessManager';
 
 // --- THEME AND STYLES ---
 const drawerWidth = 240;
@@ -110,6 +111,9 @@ function App() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [networkEvents, setNetworkEvents] = useState<any[]>([]);
   const [activeView, setActiveView] = useState('AVD Manager');
+  const [currentApkPackage, setCurrentApkPackage] = useState<string>('');
+  const [focusedMode, setFocusedMode] = useState<boolean>(false);
+  const [connectedDevices, setConnectedDevices] = useState<any[]>([]);
 
   // Tauri Event Listeners
   useEffect(() => {
@@ -120,7 +124,20 @@ function App() {
         setProcesses(event.payload.value);
     });
      const unlisten_logcat = listen('logcat', (event: Event<{ value: string }>) => {
-        setLogcat(prev => [...prev.slice(-999), ...event.payload.value.split('\n').filter(Boolean)]);
+        // Only process regular logcat if NOT in focused mode
+        if (!focusedMode) {
+            setLogcat(prev => [...prev.slice(-999), ...event.payload.value.split('\n').filter(Boolean)]);
+        }
+    });
+    const unlisten_focused_logcat = listen('focused_logcat', (event: Event<{ value: string }>) => {
+        // Set focused mode and clear existing logs when focused starts
+        setFocusedMode(true);
+        setLogcat(prev => {
+            // Clear all non-focused logs and only keep focused ones
+            const newLogs = event.payload.value.split('\n').filter(Boolean);
+            const existingFocused = prev.filter(log => log.includes('[FOCUSED]'));
+            return [...existingFocused.slice(-999), ...newLogs];
+        });
     });
     const unlisten_alert = listen('security_alert', (event: Event<{ value: any }>) => {
         setAlerts(prev => [...prev, event.payload.value]);
@@ -128,44 +145,33 @@ function App() {
     const unlisten_network = listen('network_event', (event: Event<{ value: any }>) => {
         setNetworkEvents(prev => [...prev, event.payload.value]);
     });
+    const unlisten_apk_selected = listen('apk_selected', (event: Event<{ package_name: string }>) => {
+        setCurrentApkPackage(event.payload.package_name);
+    });
+    const unlisten_connected_devices = listen('connected_devices', (event: Event<{ value: any[] }>) => {
+        setConnectedDevices(event.payload.value);
+    });
 
-    return () => {
+        return () => {
       unlisten_cpu.then((f: () => void) => f());
       unlisten_processes.then((f: () => void) => f());
-      unlisten_logcat.then((f: () => void) => f());
+              unlisten_logcat.then((f: () => void) => f());
+      unlisten_focused_logcat.then((f: () => void) => f());
       unlisten_alert.then((f: () => void) => f());
       unlisten_network.then((f: () => void) => f());
+      unlisten_apk_selected.then((f: () => void) => f());
+      unlisten_connected_devices.then((f: () => void) => f());
     };
   }, []);
 
-    // Report Generation
-  const generateReport = () => {
-    const reportData = [
-      { h1: 'AndroScope Session Report' },
-      { p: `Report generated on ${new Date().toLocaleString()}` },
-      { h2: 'Security Alerts' },
-      alerts.length > 0 ? { ul: alerts.map(a => `${a.name}: ${a.description}`) } : { p: 'None' },
-      { h2: 'Network Events (DNS)' },
-      networkEvents.length > 0 ? { ul: networkEvents.map(e => e.name) } : { p: 'None' },
-      { h2: 'Running Processes' },
-      { table: { headers: ['PID', 'Name'], rows: processes.map(p => [p.pid, p.name]) } }
-    ];
 
-    const markdown = json2md(reportData);
-    const blob = new Blob([markdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `AndroScope-Report-${Date.now()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   const menuItems = [
     { text: 'AVD Manager', icon: <PhoneAndroidIcon /> },
     { text: 'Reverse Engineering', icon: <BugReportIcon /> },
     { text: 'Advanced Debugger', icon: <AdbIcon /> },
     { text: 'Memory Analyzer', icon: <MemoryIcon /> },
+    { text: 'DIVA Challenge Solver', icon: <SecurityIcon /> },
     { text: 'Dashboard', icon: <DashboardIcon /> },
     { text: 'Logcat Viewer', icon: <BarChartIcon /> },
     { text: 'Security Alerts', icon: <SecurityIcon /> },
@@ -177,7 +183,8 @@ function App() {
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex' }}>
+      <ProcessManagerProvider>
+        <Box sx={{ display: 'flex' }}>
         <Drawer variant="permanent" sx={{ width: drawerWidth, flexShrink: 0, '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box' } }}>
            <Toolbar sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <AdbIcon sx={{ mr: 1 }} />
@@ -199,8 +206,15 @@ function App() {
            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {/* Connection status is implicit with a desktop app, so we can remove the chip */}
             <div /> 
-            <Button variant="outlined" startIcon={<DownloadIcon />} onClick={generateReport}>
-              Generate Report
+            <Button 
+              variant="outlined" 
+              color={connectedDevices.length > 0 ? "success" : "error"}
+              sx={{ 
+                minWidth: 200,
+                '& .MuiButton-startIcon': { mr: 1 }
+              }}
+            >
+              Status: {connectedDevices.length > 0 ? `Connected (${connectedDevices.length})` : 'Disconnected'}
             </Button>
           </Box>
           
@@ -208,8 +222,9 @@ function App() {
           {activeView === 'Reverse Engineering' && <ReverseEngineering />}
           {activeView === 'Advanced Debugger' && <Debugger />}
           {activeView === 'Memory Analyzer' && <MemoryAnalyzer />}
+          {activeView === 'DIVA Challenge Solver' && <DivaChallengeSolver />}
           {activeView === 'Dashboard' && <Dashboard cpuData={cpuData} processes={processes} networkEvents={networkEvents} />}
-          {activeView === 'Logcat Viewer' && <LogcatViewer logs={logcat} />}
+          {activeView === 'Logcat Viewer' && <LogcatViewer logs={logcat} currentApkPackage={currentApkPackage} onClearLogs={() => setLogcat([])} onResetFocus={() => setFocusedMode(false)} />}
           {activeView === 'Security Alerts' && <SecurityAlertsViewer alerts={alerts} />}
           {activeView === 'Network Monitor' && <NetworkMonitor events={networkEvents} />}
           {activeView === 'Visual Dependency Map' && <DependencyMap events={networkEvents} />}
@@ -217,6 +232,7 @@ function App() {
           
         </Box>
       </Box>
+      </ProcessManagerProvider>
     </ThemeProvider>
   );
 }

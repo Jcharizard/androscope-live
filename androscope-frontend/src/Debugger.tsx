@@ -4,7 +4,7 @@ import {
     List, ListItem, ListItemText, Chip, CircularProgress, Alert, Tabs, Tab, Dialog,
     DialogTitle, DialogContent, DialogActions, Table, TableBody, TableCell, 
     TableContainer, TableHead, TableRow, IconButton, Switch, FormControlLabel,
-    Grid, Card, CardContent
+    Grid, Card, CardContent, FormControl, InputLabel, Select, MenuItem
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import BugReportIcon from '@mui/icons-material/BugReport';
@@ -19,6 +19,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import HookIcon from '@mui/icons-material/AccountTree';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type Event } from '@tauri-apps/api/event';
+import { useProcessManager } from './ProcessManager';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -46,6 +47,14 @@ interface DebugSession {
     call_stack: StackFrame[];
     variables: Variable[];
     memory_regions: MemoryRegion[];
+}
+
+interface RunningApp {
+    name: string;
+    package_name: string;
+    pid: string;
+    cpu: string;
+    memory: string;
 }
 
 interface StackFrame {
@@ -99,12 +108,13 @@ function TabPanel(props: TabPanelProps) {
 export const Debugger = () => {
     const [tabValue, setTabValue] = useState(0);
     const [debugSession, setDebugSession] = useState<DebugSession | null>(null);
-    const [targetPackage, setTargetPackage] = useState('');
     const [breakpoints, setBreakpoints] = useState<Breakpoint[]>([]);
     const [callStack, setCallStack] = useState<StackFrame[]>([]);
     const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
     const [hookResults, setHookResults] = useState<HookResult[]>([]);
     const [loading, setLoading] = useState(false);
+    
+    const { runningProcesses, selectedProcess, setSelectedProcess, refreshProcesses, isLoading } = useProcessManager();
     
     // Breakpoint dialog state
     const [breakpointDialog, setBreakpointDialog] = useState(false);
@@ -118,20 +128,22 @@ export const Debugger = () => {
     const [hookDialog, setHookDialog] = useState(false);
     const [newHook, setNewHook] = useState({
         className: '',
-        methodName: ''
+        methodName: '',
+        customCode: ''
     });
     
     // Memory search state
     const [memorySearchTerm, setMemorySearchTerm] = useState('');
     const [memorySearchResults, setMemorySearchResults] = useState<string[]>([]);
 
+
     const attachToProcess = async () => {
-        if (!targetPackage) return;
+        if (!selectedProcess) return;
         
         setLoading(true);
         try {
             const session = await invoke<DebugSession>('attach_debugger', { 
-                packageName: targetPackage 
+                packageName: selectedProcess 
             });
             setDebugSession(session);
         } catch (error) {
@@ -235,19 +247,32 @@ export const Debugger = () => {
                     Advanced Debugger
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField
-                        label="Target Package"
-                        value={targetPackage}
-                        onChange={(e) => setTargetPackage(e.target.value)}
-                        placeholder="com.example.app"
-                        size="small"
-                        sx={{ minWidth: 250 }}
-                    />
+                    <FormControl size="small" sx={{ minWidth: 250 }}>
+                        <InputLabel>Running Processes</InputLabel>
+                        <Select
+                            value={selectedProcess}
+                            onChange={(e) => setSelectedProcess(e.target.value)}
+                            label="Running Processes"
+                        >
+                            {runningProcesses.map((app, index) => (
+                                <MenuItem key={index} value={app.package_name}>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                            {app.name}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {app.package_name} (PID: {app.pid})
+                                        </Typography>
+                                    </Box>
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
                     <Button
                         variant="contained"
                         startIcon={loading ? <CircularProgress size={16} /> : <PlayArrowIcon />}
                         onClick={attachToProcess}
-                        disabled={loading || !targetPackage}
+                        disabled={loading || !selectedProcess}
                     >
                         {debugSession ? 'Attached' : 'Attach'}
                     </Button>
@@ -271,7 +296,7 @@ export const Debugger = () => {
                     <Tab icon={<MemoryIcon />} label="Call Stack" />
                     <Tab icon={<SearchIcon />} label="Memory" />
                     <Tab icon={<HookIcon />} label="Hooks" />
-                    <Tab icon={<BugReportIcon />} label="Frida" />
+                    <Tab icon={<BugReportIcon />} label="Runtime" />
                 </Tabs>
 
                 <TabPanel value={tabValue} index={0}>
@@ -450,216 +475,400 @@ export const Debugger = () => {
 
                 <TabPanel value={tabValue} index={4}>
                     <Typography variant="h6" sx={{ mb: 3 }}>
-                        🚀 Frida Dynamic Instrumentation
+                        🚀 Advanced Runtime Manipulation
                     </Typography>
                     
-                    <Alert severity="warning" sx={{ mb: 3 }}>
-                        <strong>⚠️ Frida Integration:</strong> Advanced runtime manipulation and bypass capabilities.
-                        Requires Frida server running on the target device.
+                    <Alert severity="info" sx={{ mb: 3 }}>
+                        <strong>💉 Runtime Code Injection:</strong> Advanced runtime manipulation and bypass capabilities.
+                        No external dependencies required - all features work through ADB.
                     </Alert>
 
                     <Grid container spacing={3}>
-                        {/* Frida Session Management */}
+                        {/* Runtime Code Injection */}
                         <Grid item xs={12} md={6}>
                             <Card>
                                 <CardContent>
                                     <Typography variant="h6" gutterBottom>
-                                        📱 Frida Session
+                                        💉 Code Injection
                                     </Typography>
-                                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                                        <Button
-                                            variant="contained"
-                                            color="primary"
-                                            onClick={async () => {
-                                                if (!targetPackage) return;
-                                                setLoading(true);
-                                                try {
-                                                    await invoke('start_frida_session', { packageName: targetPackage });
-                                                } catch (error) {
-                                                    console.error('Failed to start Frida session:', error);
-                                                } finally {
-                                                    setLoading(false);
-                                                }
-                                            }}
-                                            disabled={loading || !targetPackage}
-                                        >
-                                            Start Frida Session
-                                        </Button>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
+                                        <TextField
+                                            label="Target Class"
+                                            placeholder="jakhar.aseem.diva.MainActivity"
+                                            size="small"
+                                            value={newHook.className}
+                                            onChange={(e) => setNewHook(prev => ({ ...prev, className: e.target.value }))}
+                                        />
+                                        <TextField
+                                            label="Target Method"
+                                            placeholder="onCreate"
+                                            size="small"
+                                            value={newHook.methodName}
+                                            onChange={(e) => setNewHook(prev => ({ ...prev, methodName: e.target.value }))}
+                                        />
+                                        <TextField
+                                            label="Custom Code"
+                                            placeholder='console.log("Code injected");'
+                                            multiline
+                                            rows={3}
+                                            size="small"
+                                            value={newHook.customCode || ''}
+                                            onChange={(e) => setNewHook(prev => ({ ...prev, customCode: e.target.value }))}
+                                        />
+                                        <Box sx={{ display: 'flex', gap: 1 }}>
+                                            <Button
+                                                variant="contained"
+                                                color="primary"
+                                                onClick={async () => {
+                                                    if (!selectedProcess || !newHook.className || !newHook.methodName || !newHook.customCode) return;
+                                                    setLoading(true);
+                                                    try {
+                                                        await invoke('inject_code_before_method', { 
+                                                            packageName: selectedProcess,
+                                                            targetClass: newHook.className,
+                                                            targetMethod: newHook.methodName,
+                                                            customCode: newHook.customCode
+                                                        });
+                                                    } catch (error) {
+                                                        console.error('Failed to inject code:', error);
+                                                    } finally {
+                                                        setLoading(false);
+                                                    }
+                                                }}
+                                                disabled={loading || !selectedProcess || !newHook.className || !newHook.methodName || !newHook.customCode}
+                                                size="small"
+                                            >
+                                                Inject Before
+                                            </Button>
+                                            <Button
+                                                variant="outlined"
+                                                color="primary"
+                                                onClick={async () => {
+                                                    if (!selectedProcess || !newHook.className || !newHook.methodName || !newHook.customCode) return;
+                                                    setLoading(true);
+                                                    try {
+                                                        await invoke('inject_code_after_method', { 
+                                                            packageName: selectedProcess,
+                                                            targetClass: newHook.className,
+                                                            targetMethod: newHook.methodName,
+                                                            customCode: newHook.customCode
+                                                        });
+                                                    } catch (error) {
+                                                        console.error('Failed to inject code:', error);
+                                                    } finally {
+                                                        setLoading(false);
+                                                    }
+                                                }}
+                                                disabled={loading || !selectedProcess || !newHook.className || !newHook.methodName || !newHook.customCode}
+                                                size="small"
+                                            >
+                                                Inject After
+                                            </Button>
+                                        </Box>
                                     </Box>
                                     <Typography variant="body2" color="text.secondary">
-                                        Initialize Frida instrumentation for runtime analysis and manipulation.
+                                        Inject custom code before or after method execution.
                                     </Typography>
                                 </CardContent>
                             </Card>
                         </Grid>
 
-                        {/* Bypass Arsenal */}
+                        {/* Method Overriding */}
                         <Grid item xs={12} md={6}>
                             <Card>
                                 <CardContent>
                                     <Typography variant="h6" gutterBottom>
-                                        🛡️ Security Bypass Arsenal
+                                        🔄 Method Overriding
                                     </Typography>
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                        <Button
-                                            variant="outlined"
-                                            color="warning"
-                                            onClick={async () => {
-                                                if (!targetPackage) return;
-                                                setLoading(true);
-                                                try {
-                                                    await invoke('apply_ssl_pinning_bypass', { packageName: targetPackage });
-                                                } catch (error) {
-                                                    console.error('SSL bypass failed:', error);
-                                                } finally {
-                                                    setLoading(false);
-                                                }
-                                            }}
-                                            disabled={loading || !targetPackage}
-                                        >
-                                            🔓 Bypass SSL Pinning
-                                        </Button>
-                                        
-                                        <Button
-                                            variant="outlined"
-                                            color="error"
-                                            onClick={async () => {
-                                                if (!targetPackage) return;
-                                                setLoading(true);
-                                                try {
-                                                    await invoke('apply_root_detection_bypass', { packageName: targetPackage });
-                                                } catch (error) {
-                                                    console.error('Root bypass failed:', error);
-                                                } finally {
-                                                    setLoading(false);
-                                                }
-                                            }}
-                                            disabled={loading || !targetPackage}
-                                        >
-                                            🚫 Bypass Root Detection
-                                        </Button>
-                                        
-                                        <Button
-                                            variant="outlined"
-                                            color="info"
-                                            onClick={async () => {
-                                                if (!targetPackage) return;
-                                                setLoading(true);
-                                                try {
-                                                    await invoke('apply_debug_detection_bypass', { packageName: targetPackage });
-                                                } catch (error) {
-                                                    console.error('Debug bypass failed:', error);
-                                                } finally {
-                                                    setLoading(false);
-                                                }
-                                            }}
-                                            disabled={loading || !targetPackage}
-                                        >
-                                            🐛 Bypass Debug Detection
-                                        </Button>
-                                    </Box>
-                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                        One-click bypass for common Android security mechanisms.
-                                    </Typography>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-
-                        {/* Method Tracer */}
-                        <Grid item xs={12}>
-                            <Card>
-                                <CardContent>
-                                    <Typography variant="h6" gutterBottom>
-                                        🎯 Method Tracer
-                                    </Typography>
-                                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
                                         <TextField
                                             label="Class Name"
-                                            placeholder="com.example.MainActivity"
+                                            placeholder="jakhar.aseem.diva.MainActivity"
                                             size="small"
-                                            sx={{ flexGrow: 1 }}
                                             value={newHook.className}
                                             onChange={(e) => setNewHook(prev => ({ ...prev, className: e.target.value }))}
                                         />
                                         <TextField
                                             label="Method Name"
-                                            placeholder="validateLicense"
+                                            placeholder="isPremium"
                                             size="small"
-                                            sx={{ flexGrow: 1 }}
                                             value={newHook.methodName}
                                             onChange={(e) => setNewHook(prev => ({ ...prev, methodName: e.target.value }))}
                                         />
+                                        <TextField
+                                            label="New Behavior"
+                                            placeholder="return true; // Always return premium"
+                                            multiline
+                                            rows={3}
+                                            size="small"
+                                            value={newHook.customCode || ''}
+                                            onChange={(e) => setNewHook(prev => ({ ...prev, customCode: e.target.value }))}
+                                        />
                                         <Button
                                             variant="contained"
+                                            color="secondary"
                                             onClick={async () => {
-                                                if (!targetPackage || !newHook.className || !newHook.methodName) return;
+                                                if (!selectedProcess || !newHook.className || !newHook.methodName || !newHook.customCode) return;
                                                 setLoading(true);
                                                 try {
-                                                    await invoke('create_method_tracer', {
-                                                        packageName: targetPackage,
+                                                    await invoke('override_method', { 
+                                                        packageName: selectedProcess,
                                                         className: newHook.className,
-                                                        methodName: newHook.methodName
+                                                        methodName: newHook.methodName,
+                                                        newBehavior: newHook.customCode
                                                     });
-                                                    setNewHook({ className: '', methodName: '', customScript: '' });
                                                 } catch (error) {
-                                                    console.error('Method tracer failed:', error);
+                                                    console.error('Failed to override method:', error);
                                                 } finally {
                                                     setLoading(false);
                                                 }
                                             }}
-                                            disabled={loading || !targetPackage || !newHook.className || !newHook.methodName}
+                                            disabled={loading || !selectedProcess || !newHook.className || !newHook.methodName || !newHook.customCode}
                                         >
-                                            🔍 Trace Method
+                                            Override Method
                                         </Button>
                                     </Box>
                                     <Typography variant="body2" color="text.secondary">
-                                        Track method calls, parameters, and return values in real-time.
+                                        Replace method implementations with custom behavior.
                                     </Typography>
                                 </CardContent>
                             </Card>
                         </Grid>
 
-                        {/* Common Targets for DIVA */}
+                        {/* Memory Patching */}
+                        <Grid item xs={12} md={6}>
+                            <Card>
+                                <CardContent>
+                                    <Typography variant="h6" gutterBottom>
+                                        🧩 Memory Patching
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                                        <Button
+                                            variant="contained"
+                                            color="warning"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('patch_memory', { 
+                                                        packageName: selectedProcess,
+                                                        targetAddress: '0x12345678',
+                                                        newValue: 'premium_user'
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to patch memory:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
+                                        >
+                                            Patch Memory
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            color="warning"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('search_and_replace_memory', { 
+                                                        packageName: selectedProcess,
+                                                        searchPattern: 'trial_user',
+                                                        replacementValue: 'premium_user'
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to search and replace memory:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
+                                        >
+                                            Search & Replace
+                                        </Button>
+                                    </Box>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Modify memory values in real-time.
+                                    </Typography>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+
+                        {/* API Hooking */}
+                        <Grid item xs={12} md={6}>
+                            <Card>
+                                <CardContent>
+                                    <Typography variant="h6" gutterBottom>
+                                        🎣 API Hooking
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                                        <Button
+                                            variant="contained"
+                                            color="info"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('hook_api_call', { 
+                                                        packageName: selectedProcess,
+                                                        apiName: 'System.getProperty',
+                                                        hookType: 'pre',
+                                                        callbackCode: 'console.log("API called:", arguments);'
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to hook API:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
+                                        >
+                                            Hook API Call
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            color="info"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('start_realtime_monitoring', { 
+                                                        packageName: selectedProcess
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to start monitoring:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
+                                        >
+                                            Start Monitoring
+                                        </Button>
+                                    </Box>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Intercept and monitor API calls.
+                                    </Typography>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+
+                        {/* DIVA Challenge Solver */}
                         <Grid item xs={12}>
                             <Card>
                                 <CardContent>
                                     <Typography variant="h6" gutterBottom>
-                                        🎯 DIVA Quick Targets
+                                        🎯 DIVA Challenge Solver
                                     </Typography>
-                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                                         <Button
-                                            size="small"
-                                            onClick={() => setNewHook(prev => ({ ...prev, className: 'jakhar.aseem.diva.MainActivity', methodName: 'onOptionsItemSelected' }))}
+                                            variant="contained"
+                                            color="success"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('solve_input_validation_challenge', { 
+                                                        packageName: selectedProcess,
+                                                        challengeName: 'Input Validation'
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to solve input validation:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
                                         >
-                                            MainActivity
+                                            🔓 Input Validation
                                         </Button>
                                         <Button
-                                            size="small"
-                                            onClick={() => setNewHook(prev => ({ ...prev, className: 'jakhar.aseem.diva.InsecureDataStorage1Activity', methodName: 'onCreate' }))}
+                                            variant="contained"
+                                            color="error"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('solve_sql_injection_challenge', { 
+                                                        packageName: selectedProcess,
+                                                        challengeName: 'SQL Injection'
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to solve SQL injection:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
                                         >
-                                            InsecureStorage1
+                                            🗄️ SQL Injection
                                         </Button>
                                         <Button
-                                            size="small"
-                                            onClick={() => setNewHook(prev => ({ ...prev, className: 'jakhar.aseem.diva.LoggingActivity2', methodName: 'onCreate' }))}
+                                            variant="contained"
+                                            color="warning"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('solve_hardcoded_secrets_challenge', { 
+                                                        packageName: selectedProcess,
+                                                        challengeName: 'Hardcoded Secrets'
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to solve hardcoded secrets:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
                                         >
-                                            Logging
+                                            🔐 Hardcoded Secrets
                                         </Button>
                                         <Button
-                                            size="small"
-                                            onClick={() => setNewHook(prev => ({ ...prev, className: 'jakhar.aseem.diva.HardcodeIssuesActivity', methodName: 'access' }))}
+                                            variant="contained"
+                                            color="info"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('solve_ssl_pinning_challenge', { 
+                                                        packageName: selectedProcess,
+                                                        challengeName: 'SSL Pinning'
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to solve SSL pinning:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
                                         >
-                                            Hardcode Issues
+                                            🛡️ SSL Pinning
                                         </Button>
                                         <Button
-                                            size="small"
-                                            onClick={() => setNewHook(prev => ({ ...prev, className: 'jakhar.aseem.diva.SQLInjectionActivity', methodName: 'searchDB' }))}
+                                            variant="contained"
+                                            color="secondary"
+                                            onClick={async () => {
+                                                if (!selectedProcess) return;
+                                                setLoading(true);
+                                                try {
+                                                    await invoke('solve_all_diva_challenges', { 
+                                                        packageName: selectedProcess
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to solve all challenges:', error);
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                            disabled={loading || !selectedProcess}
                                         >
-                                            SQL Injection
+                                            🚀 Solve All Challenges
                                         </Button>
                                     </Box>
-                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                        Pre-configured targets for DIVA vulnerability challenges.
+                                    <Typography variant="body2" color="text.secondary">
+                                        Automated solutions for all DIVA vulnerability challenges.
                                     </Typography>
                                 </CardContent>
                             </Card>
@@ -667,11 +876,12 @@ export const Debugger = () => {
                     </Grid>
 
                     <Alert severity="success" sx={{ mt: 3 }}>
-                        <strong>🎉 Frida Pro Tips:</strong>
-                        <br />• Use SSL bypass to intercept HTTPS traffic with Burp Suite or Charles Proxy
-                        <br />• Root detection bypass allows analysis on rooted devices without detection
-                        <br />• Method tracing reveals app logic flow and sensitive operations
-                        <br />• Debug bypass prevents apps from detecting debugging tools
+                        <strong>🎉 Advanced Runtime Manipulation Tips:</strong>
+                        <br />• Code injection allows you to execute custom logic before/after methods
+                        <br />• Method overriding lets you replace app behavior with your own logic
+                        <br />• Memory patching enables real-time modification of app values
+                        <br />• API hooking intercepts system calls and reveals app internals
+                        <br />• DIVA challenge solver automates vulnerability exploitation
                     </Alert>
                 </TabPanel>
             </Paper>
