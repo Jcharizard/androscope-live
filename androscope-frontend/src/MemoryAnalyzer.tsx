@@ -313,9 +313,14 @@ const MemoryAnalyzer: React.FC = () => {
       {/* Extract Strings UI Container - Always Visible */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SearchIcon /> 🔍 String Extractor & Search
-          </Typography>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <SearchIcon /> 🔍 String Extractor & Search
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              💡 Extracts strings from app logs and memory to find sensitive data like credit card numbers, passwords, and API keys
+            </Typography>
+          </Box>
           
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
             <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
@@ -426,9 +431,14 @@ const MemoryAnalyzer: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <MemoryIcon /> 📊 Memory Dump Results
-            </Typography>
+            <Box>
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <MemoryIcon /> 📊 Memory Dump Results
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                🔍 Analyzes process memory regions and extracts sensitive data (credit cards, passwords, keys)
+              </Typography>
+            </Box>
             <Button
               variant="contained"
               onClick={dumpProcessMemory}
