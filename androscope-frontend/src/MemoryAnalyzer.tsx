@@ -301,11 +301,9 @@ const MemoryAnalyzer: React.FC = () => {
                 Attach
               </Button>
             </Box>
-            <Box sx={{ flex: '1 1 400px', minWidth: '400px' }}>
-              <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
-                💡 <strong>DIVA Challenge 1:</strong> Select DIVA process, then use "Extract Strings" to find credit card numbers!
-              </Alert>
-            </Box>
+            <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
+              💡 <strong>DIVA Challenge 1:</strong> Select DIVA process, then use "Extract Strings" to find credit card numbers!
+            </Alert>
           </Box>
         </CardContent>
       </Card>

@@ -188,7 +188,7 @@ export const Debugger = () => {
         if (!debugSession || !memorySearchTerm) return;
         
         try {
-            const results = await invoke<string[]>('search_memory_strings', {
+            const results = await invoke<string[]>('search_memory', {
                 packageName: debugSession.package_name,
                 searchTerm: memorySearchTerm
             });

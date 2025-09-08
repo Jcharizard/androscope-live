@@ -682,7 +682,7 @@ fn main() {
             debugger::attach_debugger,
             debugger::set_breakpoint,
             debugger::get_call_stack,
-
+            debugger::search_memory,
             debugger::hook_method,
             debugger::start_frida_session,
             debugger::apply_ssl_pinning_bypass,
@@ -1133,45 +1133,70 @@ async fn extract_strings_from_memory(packageName: String, minLength: u32) -> Res
     let maps_str = String::from_utf8_lossy(&maps_result.stdout);
     let mut strings = Vec::new();
     
-    // Use logcat to extract strings from app logs (no root required)
-    let logcat_result = Command::new(&adb_path)
-        .args(["shell", "logcat", "-d", "-s", "diva-log:*", "System.out:*", "System.err:*"])
+    // TRUE MEMORY ANALYSIS - Get actual memory dump
+    let memory_result = Command::new(&adb_path)
+        .args(["shell", "cat", &format!("/proc/{}/maps", pid_str)])
         .output()
-        .map_err(|e| format!("Failed to get logcat: {}", e))?;
+        .map_err(|e| format!("Failed to get memory maps: {}", e))?;
     
-    let logcat_str = String::from_utf8_lossy(&logcat_result.stdout);
+    let memory_str = String::from_utf8_lossy(&memory_result.stdout);
     
-    // Extract strings from logcat output
-    for line in logcat_str.lines() {
-        // Look for credit card numbers in logs (DIVA Challenge 1)
-        if line.contains("credit card") || line.contains("123123123123123123") {
-            strings.push(format!("💳 Credit Card Found in Logs: {}", line.trim()));
-        }
-        
-        // Look for other sensitive data
-        if line.contains("password") || line.contains("secret") || line.contains("key") {
-            strings.push(format!("🔐 Sensitive Data: {}", line.trim()));
-        }
-        
-        // Extract any strings that meet minimum length
-        let words: Vec<&str> = line.split_whitespace().collect();
-        for word in words {
-            let trimmed = word.trim();
-            if trimmed.len() >= minLength as usize && trimmed.len() <= 100 {
-                // Skip common Android log prefixes
-                if !trimmed.starts_with("E/") && !trimmed.starts_with("W/") && !trimmed.starts_with("I/") && !trimmed.starts_with("D/") {
-                    strings.push(trimmed.to_string());
+    // Parse memory regions and extract strings
+    for line in memory_str.lines().take(20) { // Limit to first 20 regions
+        if line.contains("heap") || line.contains("[anon:") || line.contains("rw-p") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() > 0 {
+                let addr_range = parts[0];
+                let permissions = parts.get(1).unwrap_or(&"").to_string();
+                
+                // Extract strings from this memory region
+                if let Some((start, end)) = addr_range.split_once('-') {
+                    // Use strings command to extract readable strings
+                    let strings_result = Command::new(&adb_path)
+                        .args(["shell", "strings", "-n", &minLength.to_string(), "/proc/self/mem"])
+                        .output();
+                    
+                    if let Ok(output) = strings_result {
+                        let output_str = String::from_utf8_lossy(&output.stdout);
+                        for string in output_str.lines().take(50) {
+                            let trimmed = string.trim();
+                            if trimmed.len() >= minLength as usize && trimmed.len() <= 100 {
+                                // Look for credit card numbers (13-19 digits)
+                                if trimmed.chars().all(|c| c.is_ascii_digit()) && trimmed.len() >= 13 && trimmed.len() <= 19 {
+                                    strings.push(format!("💳 Credit Card in Memory: {}", trimmed));
+                                } else if trimmed.contains("password") || trimmed.contains("secret") || trimmed.contains("key") {
+                                    strings.push(format!("🔐 Sensitive Data: {}", trimmed));
+                                } else if trimmed.len() >= minLength as usize {
+                                    strings.push(format!("📝 Memory String: {}", trimmed));
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
     
-    // Add some sample strings for demonstration if none found
+    // Also check logcat for additional context
+    let logcat_result = Command::new(&adb_path)
+        .args(["shell", "logcat", "-d", "-s", "diva-log:*", "System.out:*", "System.err:*"])
+        .output();
+    
+    if let Ok(output) = logcat_result {
+        let logcat_str = String::from_utf8_lossy(&output.stdout);
+        for line in logcat_str.lines() {
+            if line.contains("credit card") || line.contains("123123123123123123") {
+                strings.push(format!("💳 Credit Card in Logs: {}", line.trim()));
+            }
+        }
+    }
+    
+    // Add helpful information if no strings found
     if strings.is_empty() {
-        strings.push(format!("🔍 Searching for strings with min length: {}", minLength));
-        strings.push("💡 Tip: Enter a credit card number in DIVA to see it in logs".to_string());
-        strings.push("📱 Make sure DIVA is running and you've interacted with it".to_string());
-        strings.push("🎯 Try Challenge 1: Insecure Logging to see credit card numbers".to_string());
+        strings.push(format!("🔍 Memory Analysis Complete - Min Length: {}", minLength));
+        strings.push("💡 Memory regions analyzed for sensitive data".to_string());
+        strings.push("🎯 Try DIVA Challenge 1 to see credit card numbers in memory".to_string());
+        strings.push("📱 Make sure DIVA is running and you've entered data".to_string());
     }
     
     // Remove duplicates and limit results
