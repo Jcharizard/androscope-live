@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -14,14 +14,24 @@ import {
   Alert,
   CircularProgress,
   Chip,
+  Divider,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import {
-  CodeIcon,
-  SearchIcon,
-  ExpandMoreIcon
+  Code,
+  Search,
+  ExpandMore,
+  FileIcon,
+  ClassIcon,
+  FunctionIcon,
+  KeyIcon,
+  Security,
+  BugReport,
+  Visibility
 } from '@mui/icons-material';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -76,7 +86,7 @@ const Decompiler: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedApkId, setSelectedApkId] = useState<string>('diva-sample');
+  const [selectedApkId, setSelectedApkId] = useState<string>('');
 
   // Sample decompiled code for demonstration
   const sampleDecompiledCode: DecompilerResult = {
@@ -201,12 +211,17 @@ const Decompiler: React.FC = () => {
   };
 
   const decompileApk = async () => {
+    if (!selectedApkId) {
+      alert('Please select an APK first');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // Simulate decompilation with sample data
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // For now, use sample data. In real implementation, this would call the backend
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate decompilation
       setDecompiledCode(sampleDecompiledCode);
     } catch (error) {
       setError('Failed to decompile APK: ' + error);
@@ -235,7 +250,7 @@ const Decompiler: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <CodeIcon /> 🔍 APK Decompiler
+        <Code /> 🔍 APK Decompiler
       </Typography>
       
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
@@ -260,8 +275,8 @@ const Decompiler: React.FC = () => {
             <Button
               variant="contained"
               onClick={decompileApk}
-              disabled={loading}
-              startIcon={loading ? <CircularProgress size={16} /> : <CodeIcon />}
+              disabled={loading || !selectedApkId}
+              startIcon={loading ? <CircularProgress size={16} /> : <Code />}
             >
               {loading ? 'Decompiling...' : '🔍 Decompile APK'}
             </Button>
@@ -297,7 +312,7 @@ const Decompiler: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 InputProps={{
-                  startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                  startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
                 }}
                 sx={{ mb: 2 }}
               />
@@ -356,7 +371,7 @@ const Decompiler: React.FC = () => {
                   
                   {/* Methods */}
                   <Accordion>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <AccordionSummary expandIcon={<ExpandMore />}>
                       <Typography variant="subtitle2">
                         📋 Methods ({filteredMethods.length})
                       </Typography>
@@ -384,7 +399,7 @@ const Decompiler: React.FC = () => {
 
                   {/* Fields */}
                   <Accordion>
-                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <AccordionSummary expandIcon={<ExpandMore />}>
                       <Typography variant="subtitle2">
                         🔑 Fields ({filteredFields.length})
                       </Typography>
