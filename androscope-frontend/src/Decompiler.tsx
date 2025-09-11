@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Card,
@@ -14,24 +14,14 @@ import {
   Alert,
   CircularProgress,
   Chip,
-  Divider,
   Accordion,
   AccordionSummary,
-  AccordionDetails,
-  IconButton,
-  Tooltip
+  AccordionDetails
 } from '@mui/material';
 import {
   CodeIcon,
   SearchIcon,
-  ExpandMoreIcon,
-  FileIcon,
-  ClassIcon,
-  FunctionIcon,
-  KeyIcon,
-  SecurityIcon,
-  BugReportIcon,
-  VisibilityIcon
+  ExpandMoreIcon
 } from '@mui/icons-material';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -86,7 +76,7 @@ const Decompiler: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedApkId, setSelectedApkId] = useState<string>('');
+  const [selectedApkId, setSelectedApkId] = useState<string>('diva-sample');
 
   // Sample decompiled code for demonstration
   const sampleDecompiledCode: DecompilerResult = {
@@ -211,17 +201,12 @@ const Decompiler: React.FC = () => {
   };
 
   const decompileApk = async () => {
-    if (!selectedApkId) {
-      alert('Please select an APK first');
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      // For now, use sample data. In real implementation, this would call the backend
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate decompilation
+      // Simulate decompilation with sample data
+      await new Promise(resolve => setTimeout(resolve, 1000));
       setDecompiledCode(sampleDecompiledCode);
     } catch (error) {
       setError('Failed to decompile APK: ' + error);
@@ -275,7 +260,7 @@ const Decompiler: React.FC = () => {
             <Button
               variant="contained"
               onClick={decompileApk}
-              disabled={loading || !selectedApkId}
+              disabled={loading}
               startIcon={loading ? <CircularProgress size={16} /> : <CodeIcon />}
             >
               {loading ? 'Decompiling...' : '🔍 Decompile APK'}
