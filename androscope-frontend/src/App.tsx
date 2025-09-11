@@ -10,6 +10,7 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import SecurityIcon from '@mui/icons-material/Security';
 import DnsIcon from '@mui/icons-material/Dns';
 import TerminalIcon from '@mui/icons-material/Terminal';
+import CodeIcon from '@mui/icons-material/Code';
 
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -28,6 +29,7 @@ import { ReverseEngineering } from './ReverseEngineering';
 import MemoryAnalyzer from './MemoryAnalyzer';
 import { Debugger } from './Debugger';
 import DivaChallengeSolver from './DivaChallengeSolver';
+import Decompiler from './Decompiler';
 import { ProcessManagerProvider } from './ProcessManager';
 
 // --- THEME AND STYLES ---
@@ -169,6 +171,7 @@ function App() {
   const menuItems = [
     { text: 'AVD Manager', icon: <PhoneAndroidIcon /> },
     { text: 'Reverse Engineering', icon: <BugReportIcon /> },
+    { text: 'APK Decompiler', icon: <CodeIcon /> },
     { text: 'Advanced Debugger', icon: <AdbIcon /> },
     { text: 'Memory Analyzer', icon: <MemoryIcon /> },
     { text: 'DIVA Challenge Solver', icon: <SecurityIcon /> },
@@ -220,6 +223,7 @@ function App() {
           
           {activeView === 'AVD Manager' && <AvdManager />}
           {activeView === 'Reverse Engineering' && <ReverseEngineering />}
+          {activeView === 'APK Decompiler' && <Decompiler />}
           {activeView === 'Advanced Debugger' && <Debugger />}
           {activeView === 'Memory Analyzer' && <MemoryAnalyzer />}
           {activeView === 'DIVA Challenge Solver' && <DivaChallengeSolver />}

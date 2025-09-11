@@ -378,43 +378,39 @@ const MemoryAnalyzer: React.FC = () => {
             </Box>
           ) : (
             <Paper sx={{ maxHeight: 400, overflow: 'auto', p: 1 }}>
-              {filteredStrings.length > 0 ? (
+              {extractedStrings.length > 0 ? (
                 <>
                   <Typography variant="caption" color="text.secondary" sx={{ p: 1 }}>
-                    Showing {filteredStrings.length} of {extractedStrings.length} strings
-                    {searchQuery && ` (filtered by "${searchQuery}")`}
-                  </Typography>
-                  <List dense>
-                    {filteredStrings.map((str, index) => (
-                      <ListItem key={index} sx={{ py: 0.5 }}>
-                        <ListItemText 
-                          primary={str}
-                          sx={{ 
-                            fontFamily: 'monospace', 
-                            fontSize: '0.9rem',
-                            color: /^\d{13,19}$/.test(str) ? 'error.main' : 
-                                   str.includes('💳') ? 'error.main' : 
-                                   str.toLowerCase().includes('password') ? 'warning.main' : 
-                                   str.toLowerCase().includes('key') ? 'warning.main' : 'text.primary'
-                          }}
-                        />
-                        {/^\d{13,19}$/.test(str) && (
-                          <Chip label="💳 CREDIT CARD!" color="error" size="small" />
-                        )}
-                      </ListItem>
-                    ))}
-                  </List>
-                </>
-              ) : extractedStrings.length > 0 ? (
-                <Box>
-                  <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>
                     📊 Found {extractedStrings.length} strings total
-                    {searchQuery && ` (0 match "${searchQuery}")`}
+                    {searchQuery && filteredStrings.length !== extractedStrings.length && ` (${filteredStrings.length} match "${searchQuery}")`}
                   </Typography>
-                  <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
-                    No strings match your search "{searchQuery}". Try a different search term or clear the search to see all strings.
-                  </Typography>
-                </Box>
+                  {filteredStrings.length > 0 ? (
+                    <List dense>
+                      {filteredStrings.map((str, index) => (
+                        <ListItem key={index} sx={{ py: 0.5 }}>
+                          <ListItemText 
+                            primary={str}
+                            sx={{ 
+                              fontFamily: 'monospace', 
+                              fontSize: '0.9rem',
+                              color: /^\d{13,19}$/.test(str) ? 'error.main' : 
+                                     str.includes('💳') ? 'error.main' : 
+                                     str.toLowerCase().includes('password') ? 'warning.main' : 
+                                     str.toLowerCase().includes('key') ? 'warning.main' : 'text.primary'
+                            }}
+                          />
+                          {/^\d{13,19}$/.test(str) && (
+                            <Chip label="💳 CREDIT CARD!" color="error" size="small" />
+                          )}
+                        </ListItem>
+                      ))}
+                    </List>
+                  ) : (
+                    <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                      No strings match your search "{searchQuery}". Try a different search term or clear the search to see all strings.
+                    </Typography>
+                  )}
+                </>
               ) : (
                 <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
                   No strings extracted yet. Select a process and click "🔍 Extract Strings" to start.

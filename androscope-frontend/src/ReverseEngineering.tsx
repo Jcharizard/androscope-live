@@ -710,41 +710,6 @@ export const ReverseEngineering = () => {
                                 >
                                     {analysisLoading ? 'Analyzing...' : 'Analyze APK'}
                                 </Button>
-                                <Button 
-                                    variant="outlined" 
-                                    color="warning" 
-                                    size="small"
-                                    onClick={async () => {
-                                        if (!selectedApkId) {
-                                            alert('Please select an APK first');
-                                            return;
-                                        }
-                                        try {
-                                            const strings = await invoke('extract_apk_strings', { apkId: selectedApkId });
-                                            let message = '🔍 APK Strings Extraction Complete!\n\n';
-                                            if (strings.hardcoded_secrets && strings.hardcoded_secrets.length > 0) {
-                                                message += '🚨 HARDCODED SECRETS FOUND:\n';
-                                                strings.hardcoded_secrets.forEach((secret, idx) => {
-                                                    message += `${idx + 1}. ${secret}\n`;
-                                                });
-                                                message += '\n💡 Try these values in DIVA Challenge 1!\n';
-                                            }
-                                            if (strings.urls && strings.urls.length > 0) {
-                                                message += `\n🌐 URLs Found: ${strings.urls.length}\n`;
-                                            }
-                                            if (strings.api_keys && strings.api_keys.length > 0) {
-                                                message += `🔑 API Keys Found: ${strings.api_keys.length}\n`;
-                                            }
-                                            message += `\n📊 Total Strings: ${strings.total_strings || 'N/A'}`;
-                                            alert(message);
-                                        } catch (error) {
-                                            alert('Failed to extract strings: ' + error);
-                                        }
-                                    }}
-                                    disabled={!selectedApkId}
-                                >
-                                    🔍 Extract Strings
-                                </Button>
                             </Box>
                             {analysisResult && (
                                 <Box sx={{ mt: 2 }}>
