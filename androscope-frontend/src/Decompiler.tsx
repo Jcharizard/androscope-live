@@ -33,7 +33,7 @@ import {
   BugReportIcon,
   VisibilityIcon
 } from '@mui/icons-material';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 
 interface DecompiledClass {
   name: string;
