@@ -50,18 +50,20 @@ Allows you to list, start, and cold-boot configured emulators. It includes a bui
 
 <div align="center">
   <!-- REPLACE WITH YOUR AVD MANAGER GIF -->
-  <img src="path_to_avd_manager_showcase.gif" alt="AVD Manager Showcase" width="800" />
+<img width="426" height="240" alt="devicemanager" src="https://github.com/user-attachments/assets/8f5cbb7e-96f6-44b1-bd91-784d738cbe10" />
+
 </div>
 
 ---
 
 ### 💻 APK Decompiler
-Dynamically pulls the compiled APK file directly from your connected device, runs it through the local JADX engine, and extracts full Java class hierarchies, fields, methods, URLs, API keys, and hardcoded secrets. 
+Dynamically pulls the compiled APK file directly from your connected device, runs it through the local JADX CLI engine**, and extracts full Java class hierarchies, fields, methods, URLs, API keys, and hardcoded secrets. 
 *   **Features**: IDE-like tree navigation, syntax-highlighted source viewer, session persistency, string categorization (credit cards, passwords, API keys).
 
 <div align="center">
   <!-- REPLACE WITH YOUR DECOMPILER GIF -->
-  <img src="path_to_decompiler_showcase.gif" alt="APK Decompiler Showcase" width="800" />
+ <img width="426" alt="AndroScope Live preview" src="https://github.com/user-attachments/assets/8ae4c393-79eb-4fde-a8e2-70f071619fe1" />
+    
 </div>
 
 ---
@@ -72,7 +74,8 @@ Streams high-frequency log buffers directly from the target device. In focused m
 
 <div align="center">
   <!-- REPLACE WITH YOUR LOGCAT VIEWER GIF -->
-  <img src="path_to_logcat_viewer_showcase.gif" alt="Logcat Viewer Showcase" width="800" />
+<img width="426" height="240" alt="logcat" src="https://github.com/user-attachments/assets/b0864c51-9aa9-42fb-bd74-eb73ec1e3f31" />
+
 </div>
 
 ---
@@ -94,7 +97,8 @@ An interactive terminal for executing custom ADB shell and settings actions dire
 
 <div align="center">
   <!-- REPLACE WITH YOUR DEVICE CONTROL GIF -->
-  <img src="path_to_device_control_showcase.gif" alt="Device Control Terminal Showcase" width="800" />
+<img width="640" height="640" alt="devicecontrol" src="https://github.com/user-attachments/assets/ca510f68-f0c5-4975-988c-4e0968ee0019" />
+
 </div>
 
 ---
@@ -105,7 +109,8 @@ Displays telemetry charts mapping the CPU consumption of the device alongside ac
 
 <div align="center">
   <!-- REPLACE WITH YOUR DASHBOARD GIF -->
-  <img src="path_to_dashboard_showcase.gif" alt="Real-time Dashboard Showcase" width="800" />
+<img width="426" height="240" alt="dashboard" src="https://github.com/user-attachments/assets/700b716d-cb1a-447a-90fe-f0b727212c3e" />
+
 </div>
 
 ---
