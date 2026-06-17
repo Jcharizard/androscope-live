@@ -46,23 +46,28 @@ Here is the current operational status of the AndroScope dashboard views and bac
 
 ### 📱 AVD Manager (Android Virtual Device Manager)
 Allows you to list, start, and cold-boot configured emulators. It includes a built-in background task queue that polls the boot status of the emulator and automatically installs your selected APKs the second the device is ready.
-*   **Features**: Start emulator, wipe data (cold boot), list available AVDs, auto-install queue.
+*   **Features**: Cold boot Start emulator (wipe data), list available AVDs, side-load APK's into emulator (ADB).
 
 <div align="center">
   <!-- REPLACE WITH YOUR AVD MANAGER GIF -->
-<img width="426" height="426" alt="devicemanager" src="https://github.com/user-attachments/assets/8f5cbb7e-96f6-44b1-bd91-784d738cbe10" />
+<img width="1138" height="640" alt="logcatgif" src="https://github.com/user-attachments/assets/c7132d2d-9341-44ca-8b45-38e109e19c16" />
 
 </div>
 
 ---
 
 ### 💻 APK Decompiler
-Dynamically pulls the compiled APK file directly from your connected device, runs it through the local JADX CLI engine**, and extracts full Java class hierarchies, fields, methods, URLs, API keys, and hardcoded secrets. 
-*   **Features**: IDE-like tree navigation, syntax-highlighted source viewer, session persistency, string categorization (credit cards, passwords, API keys).
+Dynamically pulls the compiled APK file directly from your connected device, runs it through the local JADX CLI engine, and extracts full Java class hierarchies, fields, methods, URLs, API keys, and hardcoded secrets. 
+*   **Features**: IDE-like tree navigation, syntax-highlighted source viewer, session persistency, string search (credit cards, passwords, API keys).
 
 <div align="center">
   <!-- REPLACE WITH YOUR DECOMPILER GIF -->
- <img width="426" alt="AndroScope Live preview" src="https://github.com/user-attachments/assets/8ae4c393-79eb-4fde-a8e2-70f071619fe1" />
+
+ 
+
+https://github.com/user-attachments/assets/672a7d89-f702-45b3-9d9c-67ce335b4a85
+
+
     
 </div>
 
@@ -74,8 +79,9 @@ Streams high-frequency log buffers directly from the target device. In focused m
 
 <div align="center">
   <!-- REPLACE WITH YOUR LOGCAT VIEWER GIF -->
-<img width="1138" height="640" alt="logcatgif" src="https://github.com/user-attachments/assets/c7132d2d-9341-44ca-8b45-38e109e19c16" />
 
+
+https://github.com/user-attachments/assets/1b387717-494b-4f4e-a353-a937e89f9160
 
 
 </div>
@@ -88,7 +94,10 @@ Provides a full self-test center for your developer setup. Tests ADB connection 
 
 <div align="center">
   <!-- REPLACE WITH YOUR DIAGNOSE PAGE GIF -->
-  <img src="path_to_diagnose_page_showcase.gif" alt="Diagnose Center Showcase" width="800" />
+
+https://github.com/user-attachments/assets/6b9df5f8-9d15-495c-8ad9-86bfad2e9e7a
+
+
 </div>
 
 ---
@@ -111,7 +120,12 @@ Displays telemetry charts mapping the CPU consumption of the device alongside ac
 
 <div align="center">
   <!-- REPLACE WITH YOUR DASHBOARD GIF -->
-<img width="426" height="240" alt="dashboard" src="https://github.com/user-attachments/assets/700b716d-cb1a-447a-90fe-f0b727212c3e" />
+
+
+
+https://github.com/user-attachments/assets/d4d7ff6a-4cee-407b-8af7-b38704beaf12
+
+
 
 </div>
 
