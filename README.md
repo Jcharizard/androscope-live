@@ -50,7 +50,7 @@ Allows you to list, start, and cold-boot configured emulators. It includes a bui
 
 <div align="center">
   <!-- REPLACE WITH YOUR AVD MANAGER GIF -->
-<img width="426" height="240" alt="devicemanager" src="https://github.com/user-attachments/assets/8f5cbb7e-96f6-44b1-bd91-784d738cbe10" />
+<img width="426" height="426" alt="devicemanager" src="https://github.com/user-attachments/assets/8f5cbb7e-96f6-44b1-bd91-784d738cbe10" />
 
 </div>
 
@@ -74,7 +74,9 @@ Streams high-frequency log buffers directly from the target device. In focused m
 
 <div align="center">
   <!-- REPLACE WITH YOUR LOGCAT VIEWER GIF -->
-<img width="426" height="240" alt="logcat" src="https://github.com/user-attachments/assets/b0864c51-9aa9-42fb-bd74-eb73ec1e3f31" />
+<img width="1138" height="640" alt="logcatgif" src="https://github.com/user-attachments/assets/c7132d2d-9341-44ca-8b45-38e109e19c16" />
+
+
 
 </div>
 
